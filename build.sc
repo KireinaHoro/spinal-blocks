@@ -16,10 +16,14 @@ object spinalCore extends deps.spinalhdl.build.Core with SpinalDep { def name = 
 object spinalLib extends deps.spinalhdl.build.Lib with SpinalDep { def name = "lib" }
 object spinalIdslPlugin extends deps.spinalhdl.build.IdslPlugin with SpinalDep { def name = "idslplugin" }
 
+trait SpinalPlugin extends ScalaModule {
+  def pluginOptions: T[Seq[String]]
+}
+
 object blocks extends Cross[BlocksModule](scalaVersions)
 trait BlocksModule extends SbtModule with CrossSbtModule {
-  def spinalDeps = Agg(spinalCore, spinalLib)
-  def spinalIdslDep = spinalIdslPlugin
+  def spinalDeps: Agg[ScalaModule] = Agg(spinalCore, spinalLib)
+  def spinalIdslDep = spinalIdslPlugin.asInstanceOf[SpinalPlugin]
 
   override def millSourcePath = os.pwd
   override def sources = T.sources(
