@@ -31,9 +31,9 @@ package object axi {
     }
   }
 
-  def axiRTLFile(name: String) = s"deps/verilog-axi/rtl/$name.v"
+  def axiRTLFile(name: String) = getClass.getResource(s"/verilog-axi/rtl/$name.v")
 
-  def axisRTLFile(name: String) = s"deps/verilog-axis/rtl/$name.v"
+  def axisRTLFile(name: String) = getClass.getResource(s"/verilog-axis/rtl/$name.v")
 
   implicit class RichBundle(b: Bundle) {
     def <<?(that: Bundle): Unit = {

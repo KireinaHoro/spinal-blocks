@@ -80,7 +80,7 @@ case class AxiStreamFifo(
   mapCurrentClockDomain(io.clk, io.rst)
   noIoPrefix()
   addPrePopTask { () =>
-    axi.renameAxi4StreamIO(alwaysAddT = true)
+    renameAxi4StreamIO(alwaysAddT = true)
   }
 
   addRTLPath(axisRTLFile(modName))

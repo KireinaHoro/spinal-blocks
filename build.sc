@@ -25,6 +25,9 @@ trait BlocksModule extends SbtModule with CrossSbtModule {
   override def sources = T.sources(
     millSourcePath / "blocks"
   )
+  override def resources = T.sources {
+    super.resources() :+ PathRef(millSourcePath / "deps")
+  }
 
   override def scalacOptions = super.scalacOptions() ++ spinalIdslDep.pluginOptions()
   override def moduleDeps = super.moduleDeps ++ spinalDeps

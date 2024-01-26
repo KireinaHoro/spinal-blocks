@@ -51,7 +51,7 @@ class AxiDmaDescMux(
   noIoPrefix()
 
   addPrePopTask { () =>
-    axi.renameAxi4StreamIO()
+    renameAxi4StreamIO()
   }
 
   addRTLPath(axiRTLFile(modName))
