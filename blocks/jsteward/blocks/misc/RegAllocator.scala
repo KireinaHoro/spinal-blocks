@@ -1,4 +1,4 @@
-package misc
+package jsteward.blocks.misc
 
 import spinal.core._
 

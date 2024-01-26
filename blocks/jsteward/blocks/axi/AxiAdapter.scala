@@ -1,4 +1,4 @@
-package blackbox.axi
+package jsteward.blocks.axi
 
 import spinal.core._
 import spinal.lib._
@@ -53,7 +53,7 @@ class AxiAdapter(inConfig: Axi4Config, outDataWidth: Int, convertBurst: Boolean 
   mapCurrentClockDomain(io.clk, io.rst)
   noIoPrefix()
   addPrePopTask { () =>
-    axi.renameAxi4IO
+    renameAxi4IO
   }
 
   addRTLPath(axiRTLFile(modName))

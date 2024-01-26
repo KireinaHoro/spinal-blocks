@@ -1,4 +1,4 @@
-package blackbox.axi
+package jsteward.blocks.axi
 
 import spinal.core._
 import spinal.lib._

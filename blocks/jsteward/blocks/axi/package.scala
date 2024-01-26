@@ -1,4 +1,4 @@
-package blackbox
+package jsteward.blocks
 
 import axi.Axi4StreamCustom.Axi4StreamCustom
 import spinal.core._
@@ -31,9 +31,9 @@ package object axi {
     }
   }
 
-  def axiRTLFile(name: String) = getClass.getResource(s"/verilog-axi/rtl/$name.v")
+  def axiRTLFile(name: String) = getClass.getResource(s"/verilog-axi/rtl/$name.v").getPath
 
-  def axisRTLFile(name: String) = getClass.getResource(s"/verilog-axis/rtl/$name.v")
+  def axisRTLFile(name: String) = getClass.getResource(s"/verilog-axis/rtl/$name.v").getPath
 
   implicit class RichBundle(b: Bundle) {
     def <<?(that: Bundle): Unit = {

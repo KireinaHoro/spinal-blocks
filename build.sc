@@ -23,6 +23,7 @@ trait SpinalPlugin extends ScalaModule {
 object blocks extends Cross[BlocksModule](scalaVersions)
 trait BlocksModule extends SbtModule with CrossSbtModule {
   def spinalDeps: Agg[ScalaModule] = Agg(spinalCore, spinalLib)
+  def spinalPluginOptions: T[Seq[String]] = spinalIdslPlugin.pluginOptions
 
   override def millSourcePath = os.pwd
   override def sources = T.sources(
@@ -32,7 +33,7 @@ trait BlocksModule extends SbtModule with CrossSbtModule {
     super.resources() :+ PathRef(millSourcePath / "deps")
   }
 
-  override def scalacOptions = super.scalacOptions() ++ spinalIdslPlugin.pluginOptions()
+  override def scalacOptions = super.scalacOptions() ++ spinalPluginOptions()
   override def moduleDeps = super.moduleDeps ++ spinalDeps
   override def ivyDeps = Agg(
     ivy"com.lihaoyi::os-lib:0.9.3",
