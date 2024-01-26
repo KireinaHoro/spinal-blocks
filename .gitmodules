@@ -1,0 +1,3 @@
+[submodule "deps/spinalhdl"]
+	path = deps/spinalhdl
+	url = git@github.com:KireinaHoro/SpinalHDL
