@@ -18,13 +18,16 @@ object spinalIdslPlugin extends deps.spinalhdl.build.IdslPlugin with SpinalDep {
 
 object blocks extends Cross[BlocksModule](scalaVersions)
 trait BlocksModule extends SbtModule with CrossSbtModule {
+  def spinalDeps = Agg(spinalCore, spinalLib)
+  def spinalIdslDep = spinalIdslPlugin
+
   override def millSourcePath = os.pwd
   override def sources = T.sources(
     millSourcePath / "blocks"
   )
 
-  override def scalacOptions = super.scalacOptions() ++ spinalIdslPlugin.pluginOptions()
-  override def moduleDeps = super.moduleDeps ++ Agg(spinalCore, spinalLib)
+  override def scalacOptions = super.scalacOptions() ++ spinalIdslDep.pluginOptions()
+  override def moduleDeps = super.moduleDeps ++ spinalDeps
   override def ivyDeps = Agg(
     ivy"com.lihaoyi::os-lib:0.9.3",
   )
