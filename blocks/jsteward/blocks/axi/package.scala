@@ -22,7 +22,7 @@ package object axi {
 
   def renameAxi4StreamIO(alwaysAddT: Boolean = false): Unit = {
     Component.current.getAllIo.foreach { bt =>
-      val pattern = "^([sm]_axis.*?)(?:payload_)*([^_]+)$".r
+      val pattern = "^((?:s|m|mon)_axis.*?)(?:payload_)*([^_]+)$".r
       for (pm <- pattern.findFirstMatchIn(bt.getName)) {
         val busName = pm.group(1)
         val signalName = if (busName.endsWith("data_") || alwaysAddT) s"t${pm.group(2)}" else pm.group(2)
