@@ -92,7 +92,8 @@ package object axi {
     }
 
     def frameLength: Flow[UInt] = {
-      val monitor = AxiStreamFrameLen(axis.config)
+      val clockDomain = axis.getTag(classOf[ClockDomainTag]).map(_.clockDomain).getOrElse(ClockDomain.current)
+      val monitor = clockDomain(AxiStreamFrameLen(axis.config))
       monitor.driveFrom(axis)
       monitor.io.frame_len
     }

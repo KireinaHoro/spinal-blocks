@@ -27,7 +27,7 @@ case class AxiStreamFrameLen(axisConfig: Axi4StreamConfig, lenWidth: Int = 16) e
       val tvalid = in Bool()
       val tready = in Bool()
       val tlast = in Bool()
-    }
+    } addTag ClockDomainTag(clockDomain)
 
     val frame_len = master(Flow(UInt(lenWidth bits)))
   }
