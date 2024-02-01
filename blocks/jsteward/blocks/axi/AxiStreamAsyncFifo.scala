@@ -55,19 +55,6 @@ case class AxiStreamAsyncFifo(
   val modName = "axis_async_fifo"
   setBlackBoxName(modName)
 
-  class Pause extends Bundle {
-    val req = in Bool()
-    val ack = out Bool()
-  }
-
-  class Status extends Bundle {
-    val depth = UInt(log2Up(depthBytes) bits)
-    val depth_commit = UInt(log2Up(depthBytes) bits)
-    val overflow = Bool()
-    val bad_frame = Bool()
-    val good_frame = Bool()
-  }
-
   val io = new Bundle {
     val s_clk = in Bool()
     val s_rst = in Bool()
@@ -77,11 +64,11 @@ case class AxiStreamAsyncFifo(
     val m_rst = in Bool()
     val m_axis = master(Axi4Stream(intfAxisConfig))
 
-    val s_pause = new Pause
-    val m_pause = new Pause
+    val s_pause = new FifoPause
+    val m_pause = new FifoPause
 
-    val s_status = out(new Status)
-    val m_status = out(new Status)
+    val s_status = out(new FifoStatus(depthBytes))
+    val m_status = out(new FifoStatus(depthBytes))
   }
 
   // TODO: reimplement as rework to generate proper access points like in `InOutVecToBits`

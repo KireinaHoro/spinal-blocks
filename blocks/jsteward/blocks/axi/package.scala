@@ -9,8 +9,22 @@ import spinal.lib.bus.amba4.axis.{Axi4Stream, Axi4StreamConfig}
 import spinal.lib.bus.amba4.axis.Axi4Stream.Axi4Stream
 
 import scala.collection.mutable
+import scala.language.postfixOps
 
 package object axi {
+  class FifoPause extends Bundle {
+    val req = in Bool()
+    val ack = out Bool()
+  }
+
+  class FifoStatus(depthBytes: Int) extends Bundle {
+    val depth = UInt(log2Up(depthBytes) + 1 bits)
+    val depth_commit = UInt(log2Up(depthBytes) + 1 bits)
+    val overflow = Bool()
+    val bad_frame = Bool()
+    val good_frame = Bool()
+  }
+
   def renameAxi4IO: Unit = {
     Component.current.getAllIo.foreach { bt =>
       val pattern = "^([sm]_axi.*)(aw|w|b|ar|r)_(?:payload_)?([^_]+)$".r
