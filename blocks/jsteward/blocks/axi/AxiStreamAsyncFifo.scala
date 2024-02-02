@@ -8,7 +8,7 @@ import scala.language.postfixOps
 
 case class AxiStreamAsyncFifo(
                                axisConfig: Axi4StreamConfig,
-                               depthWords: Int = 4096,
+                               depthBytes: Int = 4096,
                                ramPipeline: Boolean = true,
                                outputFifoEnable: Boolean = false,
                                frameFifo: Boolean = false,
@@ -28,6 +28,8 @@ case class AxiStreamAsyncFifo(
   assert(clockDomain.config.resetKind == SYNC, "verilog-axis requires synchronous reset")
 
   val intfAxisConfig = mapToIntf(axisConfig)
+  val bytesPerWord = if (axisConfig.useKeep) 1 else axisConfig.dataWidth
+  val depthWords = depthBytes / bytesPerWord
   val generic = new Generic {
     val DEPTH = depthWords
     val DATA_WIDTH = axisConfig.dataWidth * 8
@@ -123,7 +125,8 @@ case class SimpleAsyncFifo[T <: Data](payloadType: HardType[T],
   val actualWidth = roundUp(payloadType.getBitsWidth, 8).toInt
   val axisConfig = Axi4StreamConfig(dataWidth = actualWidth / 8)
   val fifo = AxiStreamAsyncFifo(axisConfig, depthWords, ramPipeline, outputFifoEnable, frameFifo, userBadFrameValue,
-    userBadFrameMask, dropBadFrame, dropWhenFull, markWhenFull, pauseEnable)(dropOversizeFrame, framePause)(clockSlave, clockMaster)
+    userBadFrameMask, dropBadFrame, dropWhenFull, markWhenFull, pauseEnable)(dropOversizeFrame, framePause)(clockSlave,
+    clockMaster)
 
   val slavePort = slave(Stream(payloadType))
   val masterPort = master(Stream(payloadType))
@@ -137,8 +140,9 @@ case class SimpleAsyncFifo[T <: Data](payloadType: HardType[T],
 }
 
 object SimpleAsyncFifo {
-  def apply[T <: Data](push: Stream[T], pop: Stream[T], depthWords: Int, pushClock: ClockDomain, popClock: ClockDomain): SimpleAsyncFifo[T] = {
-    val fifo = SimpleAsyncFifo(push.payloadType, depthWords)()(pushClock, popClock)
+  def apply[T <: Data](push: Stream[T], pop: Stream[T], depth: Int, pushClock: ClockDomain, popClock: ClockDomain): SimpleAsyncFifo[T] = {
+    val actualWidth = roundUp(push.payloadType.getBitsWidth, 8).toInt
+    val fifo = SimpleAsyncFifo(push.payloadType, depth * actualWidth / 8)()(pushClock, popClock)
     fifo.slavePort << push
     fifo.masterPort >> pop
 

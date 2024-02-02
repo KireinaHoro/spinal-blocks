@@ -8,7 +8,7 @@ import scala.language.postfixOps
 
 case class AxiStreamFifo(
                           axisConfig: Axi4StreamConfig,
-                          depthWords: Int = 4096,
+                          depthBytes: Int = 4096,
                           ramPipeline: Boolean = true,
                           outputFifoEnable: Boolean = false,
                           frameFifo: Boolean = false,
@@ -24,6 +24,8 @@ case class AxiStreamFifo(
                         ) extends BlackBox {
   assert(clockDomain.config.resetKind == SYNC, "verilog-axis requires synchronous reset")
 
+  val bytesPerWord = if (axisConfig.useKeep) 1 else axisConfig.dataWidth
+  val depthWords = depthBytes / bytesPerWord
   val intfAxisConfig = mapToIntf(axisConfig)
   val generic = new Generic {
     val DEPTH = depthWords
