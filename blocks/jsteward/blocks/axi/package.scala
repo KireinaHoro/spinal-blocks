@@ -86,6 +86,8 @@ package object axi {
   // convert a spinal lib Axi4StreamConfig to verilog-axis format
   def mapToIntf(config: Axi4StreamConfig): Axi4StreamConfig =
     config.copy(
+      useLast = true,
+      useKeep = true,
       useId = true,
       idWidth = if (config.useId) config.idWidth else 1,
       useDest = true,
