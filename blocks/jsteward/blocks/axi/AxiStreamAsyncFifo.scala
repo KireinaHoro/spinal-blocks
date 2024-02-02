@@ -8,7 +8,7 @@ import scala.language.postfixOps
 
 case class AxiStreamAsyncFifo(
                                axisConfig: Axi4StreamConfig,
-                               depthBytes: Int = 4096,
+                               depthWords: Int = 4096,
                                ramPipeline: Boolean = true,
                                outputFifoEnable: Boolean = false,
                                frameFifo: Boolean = false,
@@ -29,7 +29,7 @@ case class AxiStreamAsyncFifo(
 
   val intfAxisConfig = mapToIntf(axisConfig)
   val generic = new Generic {
-    val DEPTH = depthBytes
+    val DEPTH = depthWords
     val DATA_WIDTH = axisConfig.dataWidth * 8
     val KEEP_ENABLE = axisConfig.useKeep
     val KEEP_WIDTH = axisConfig.dataWidth
@@ -67,8 +67,8 @@ case class AxiStreamAsyncFifo(
     val s_pause = new FifoPause
     val m_pause = new FifoPause
 
-    val s_status = out(new FifoStatus(depthBytes))
-    val m_status = out(new FifoStatus(depthBytes))
+    val s_status = out(new FifoStatus(depthWords))
+    val m_status = out(new FifoStatus(depthWords))
   }
 
   // TODO: reimplement as rework to generate proper access points like in `InOutVecToBits`
@@ -97,5 +97,51 @@ case class AxiStreamAsyncFifo(
       io.m_pause.req := False
       io.s_pause.req := False
     }
+  }
+}
+
+/** Simple FIFO wrapped around the AXI-Stream FIFO for easy CDC. */
+case class SimpleAsyncFifo[T <: Data](payloadType: HardType[T],
+                                      depthWords: Int = 4096,
+                                      ramPipeline: Boolean = true,
+                                      outputFifoEnable: Boolean = false,
+                                      frameFifo: Boolean = false,
+                                      userBadFrameValue: Int = 1,
+                                      userBadFrameMask: Int = 1,
+                                      dropBadFrame: Boolean = false,
+                                      dropWhenFull: Boolean = false,
+                                      markWhenFull: Boolean = false,
+                                      pauseEnable: Boolean = false,
+                                     )(
+                                       dropOversizeFrame: Boolean = frameFifo,
+                                       framePause: Boolean = frameFifo,
+                                     )(
+                                       clockSlave: ClockDomain,
+                                       clockMaster: ClockDomain,
+                                     ) extends Component {
+  // FIXME: we round up payload to byte boundary due to SpinalHDL AXI-Stream enforcing byte size
+  val actualWidth = roundUp(payloadType.getBitsWidth, 8).toInt
+  val axisConfig = Axi4StreamConfig(dataWidth = actualWidth / 8)
+  val fifo = AxiStreamAsyncFifo(axisConfig, depthWords, ramPipeline, outputFifoEnable, frameFifo, userBadFrameValue,
+    userBadFrameMask, dropBadFrame, dropWhenFull, markWhenFull, pauseEnable)(dropOversizeFrame, framePause)(clockSlave, clockMaster)
+
+  val slavePort = slave(Stream(payloadType))
+  val masterPort = master(Stream(payloadType))
+
+  slavePort.translateInto(fifo.slavePort) { case (fp, mp) =>
+    fp.data := mp.asBits.resized
+  }
+  masterPort.translateFrom(fifo.masterPort) { case (mp, fp) =>
+    mp.assignFromBits(fp.data.resized)
+  }
+}
+
+object SimpleAsyncFifo {
+  def apply[T <: Data](push: Stream[T], pop: Stream[T], depthWords: Int, pushClock: ClockDomain, popClock: ClockDomain): SimpleAsyncFifo[T] = {
+    val fifo = SimpleAsyncFifo(push.payloadType, depthWords)()(pushClock, popClock)
+    fifo.slavePort << push
+    fifo.masterPort >> pop
+
+    fifo
   }
 }

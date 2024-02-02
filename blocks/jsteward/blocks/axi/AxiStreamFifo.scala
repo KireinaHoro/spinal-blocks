@@ -8,7 +8,7 @@ import scala.language.postfixOps
 
 case class AxiStreamFifo(
                           axisConfig: Axi4StreamConfig,
-                          depthBytes: Int = 4096,
+                          depthWords: Int = 4096,
                           ramPipeline: Boolean = true,
                           outputFifoEnable: Boolean = false,
                           frameFifo: Boolean = false,
@@ -26,7 +26,7 @@ case class AxiStreamFifo(
 
   val intfAxisConfig = mapToIntf(axisConfig)
   val generic = new Generic {
-    val DEPTH = depthBytes
+    val DEPTH = depthWords
     val DATA_WIDTH = axisConfig.dataWidth * 8
     val KEEP_ENABLE = axisConfig.useKeep
     val KEEP_WIDTH = axisConfig.dataWidth
@@ -61,7 +61,7 @@ case class AxiStreamFifo(
 
     val pause = new FifoPause
 
-    val status = out(new FifoStatus(depthBytes))
+    val status = out(new FifoStatus(depthWords))
   }
 
   // TODO: reimplement as rework to generate proper access points like in `InOutVecToBits`

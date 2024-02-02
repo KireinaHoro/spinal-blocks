@@ -17,9 +17,9 @@ package object axi {
     val ack = out Bool()
   }
 
-  class FifoStatus(depthBytes: Int) extends Bundle {
-    val depth = UInt(log2Up(depthBytes) + 1 bits)
-    val depth_commit = UInt(log2Up(depthBytes) + 1 bits)
+  class FifoStatus(depthWords: Int) extends Bundle {
+    val depth = UInt(log2Up(depthWords) + 1 bits)
+    val depth_commit = UInt(log2Up(depthWords) + 1 bits)
     val overflow = Bool()
     val bad_frame = Bool()
     val good_frame = Bool()
