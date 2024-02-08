@@ -15,15 +15,17 @@ class RegAllocatorFactory {
 
   private type BlockMap = mutable.LinkedHashMap[String, RegDesc]
 
-  case class RegBlock(blockName: String, blockLen: BigInt, defaultSize: BigInt) {
+  // read bus width: special alignment for read-sensitive registers; they are allocated at the back of the block
+  case class RegBlock(blockName: String, blockLen: BigInt, defaultSize: BigInt, readBusWidth: BigInt) {
     private[RegAllocatorFactory] val blockMap = new BlockMap
     private[RegAllocatorFactory] val allocatedBases = mutable.LinkedHashMap[Int, BigInt]()
 
     // read back allocated block
     private var addrOffset: BigInt = 0
+    private var readSensitiveAddrOffset: BigInt = blockLen
 
     trait RegBlockAlloc {
-      def apply(name: String, subName: String = "", size: BigInt = defaultSize): BigInt
+      def apply(name: String, subName: String = "", size: BigInt = defaultSize, readSensitive: Boolean = false): BigInt
     }
 
     def readBack(blockIdx: Int): RegBlockReadBack = {
@@ -40,7 +42,7 @@ class RegAllocatorFactory {
       assert(!allocatedBases.isDefinedAt(blockIdx), f"block index $blockIdx already allocated for $blockName!")
       allocatedBases.update(blockIdx, base)
 
-      (name: String, subName: String, size: BigInt) => {
+      (name: String, subName: String, size: BigInt, readSensitive: Boolean) => {
         if (allocatedBases.size > 1) {
           // this is a recall; ensure definition matches with existing
           val reg = blockMap(genKey(name, subName))
@@ -48,11 +50,20 @@ class RegAllocatorFactory {
           reg.addr(base)
         } else {
           // this is a new block
-          val currOffset = addrOffset
-          addrOffset += size
-          assert(addrOffset <= blockLen, f"register alloc overflow block length [$base%#x - ${base + blockLen}%#x]")
-          blockMap.update(s"${genKey(name, subName)}", RegDesc(currOffset, size))
-          currOffset + base
+          val allocated = if (!readSensitive) {
+            val out = addrOffset
+            addrOffset += size
+            assert(addrOffset <= blockLen, f"register alloc overflow block length [$base%#x - ${base + blockLen}%#x]")
+            out
+          } else {
+            val out = readSensitiveAddrOffset - readBusWidth
+            readSensitiveAddrOffset -= readBusWidth
+            assert(readSensitiveAddrOffset >= 0, f"register alloc underflow special align")
+            out
+          }
+          assert(addrOffset <= readSensitiveAddrOffset, "regular reg and special reg overlap")
+          blockMap.update(s"${genKey(name, subName)}", RegDesc(allocated, size))
+          allocated + base
         }
       }
     }
@@ -139,8 +150,8 @@ class RegAllocatorFactory {
     block.readBack(blockIdx)
   }
 
-  def apply(blockName: String, blockIdx: Int = 0)(base: BigInt, blockLen: BigInt, defaultSize: BigInt) = {
-    val block = blocks.getOrElseUpdate(blockName, RegBlock(blockName, blockLen, defaultSize))
+  def apply(blockName: String, blockIdx: Int = 0)(base: BigInt, blockLen: BigInt, defaultSize: BigInt)(readBusWidth: BigInt = defaultSize) = {
+    val block = blocks.getOrElseUpdate(blockName, RegBlock(blockName, blockLen, defaultSize, readBusWidth))
     assert(block.blockLen == blockLen, "existing block definition mismatch!")
     assert(block.defaultSize == defaultSize, "existing block definition mismatch!")
     // TODO: check overlap between blocks
