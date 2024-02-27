@@ -25,8 +25,8 @@ package object axi {
     val good_frame = Bool()
   }
 
-  def renameAxi4IO: Unit = {
-    Component.current.getAllIo.foreach { bt =>
+  def renameAxi4IO(c: Component = Component.current): Unit = {
+    c.getAllIo.foreach { bt =>
       val pattern = "^([sm]_axi.*)(aw|w|b|ar|r)_(?:payload_)?([^_]+)$".r
       for (pm <- pattern.findFirstMatchIn(bt.getName)) {
         bt.setName(pm.group(1) + pm.group(2) + pm.group(3))
@@ -34,8 +34,8 @@ package object axi {
     }
   }
 
-  def renameAxi4StreamIO(alwaysAddT: Boolean = false): Unit = {
-    Component.current.getAllIo.foreach { bt =>
+  def renameAxi4StreamIO(c: Component = Component.current, alwaysAddT: Boolean = false): Unit = {
+    c.getAllIo.foreach { bt =>
       val pattern = "^((?:s|m|mon)_axis.*?)(?:payload_)*([^_]+)$".r
       for (pm <- pattern.findFirstMatchIn(bt.getName)) {
         val busName = pm.group(1)

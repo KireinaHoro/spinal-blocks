@@ -123,7 +123,7 @@ class AxiDma(dmaConfig: AxiDmaConfig,
   noIoPrefix()
 
   addPrePopTask { () =>
-    renameAxi4IO
+    renameAxi4IO()
     renameAxi4StreamIO()
   }
 

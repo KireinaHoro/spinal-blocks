@@ -53,7 +53,7 @@ class AxiAdapter(inConfig: Axi4Config, outDataWidth: Int, convertBurst: Boolean 
   mapCurrentClockDomain(io.clk, io.rst)
   noIoPrefix()
   addPrePopTask { () =>
-    renameAxi4IO
+    renameAxi4IO()
   }
 
   addRTLPath(axiRTLFile(modName))
