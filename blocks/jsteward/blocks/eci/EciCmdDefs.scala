@@ -10,6 +10,7 @@ object EciCmdDefs {
   val ECI_CL_WIDTH = 1024
   val ECI_CL_SIZE_BYTES = ECI_CL_WIDTH / 8
   val ECI_CL_LEN_WIDTH = log2Up(ECI_CL_SIZE_BYTES) + 1
+  val ECI_CL_INDEX_WIDTH = 33
   val ECI_PACKET_SIZE = (ECI_CL_WIDTH / ECI_WORD_WIDTH) + 1
   val ECI_PACKET_SIZE_WIDTH = log2Up(ECI_PACKET_SIZE)
 
@@ -44,6 +45,31 @@ object EciCmdDefs {
   def EciVcSize = Bits(ECI_LCL_TOT_NUM_VCS_WIDTH bits)
   def EciPacketSize = Bits(ECI_PACKET_SIZE_WIDTH bits)
   def EciNodeId = Bits(ECI_NODE_ID_WIDTH bits)
+  def EciClIndex = Bits(ECI_CL_INDEX_WIDTH bits)
+
+  def aliasCachelineIndex(cli: Bits): Bits = {
+    val aliased_cli = EciClIndex
+    aliased_cli(32 downto 13) := cli(32 downto 13)
+    aliased_cli(12 downto 8) := cli(12 downto 8) ^ cli(17 downto 13)
+    aliased_cli(7 downto 5) := cli(7 downto 5) ^ cli(20 downto 18)
+    aliased_cli(4 downto 3) := cli(4 downto 3) ^ cli(17 downto 16) ^ cli(6 downto 5)
+    aliased_cli(2 downto 0) := cli(2 downto 0) ^ cli(15 downto 13) ^ cli(7 downto 5)
+    aliased_cli
+  }
+
+  def unaliasCachelineIndex(aliased_cli: Bits): Bits = {
+    val cli = EciClIndex
+    cli(32 downto 13) := aliased_cli(32 downto 13)
+    cli(12 downto 8)  := aliased_cli(12 downto 8) ^ aliased_cli(17 downto 13)
+    cli(7 downto 5)   := aliased_cli(7 downto 5) ^ aliased_cli(20 downto 18)
+    cli(4 downto 3)   := aliased_cli(4 downto 3) ^ aliased_cli(19 downto 18) ^ aliased_cli(17 downto 16) ^ aliased_cli(6 downto 5)
+    cli(2 downto 0)   := aliased_cli(2 downto 0) ^ aliased_cli(20 downto 18) ^ aliased_cli(15 downto 13) ^ aliased_cli(7 downto 5)
+    cli
+  }
+
+  def aliasAddress(addr: UInt): Bits = aliasCachelineIndex(addr.asBits(39 downto 7)) ## B(0, 7 bits)
+
+  def unaliasAddress(addr: Bits): UInt = unaliasCachelineIndex(addr(39 downto 7)).asUInt @@ U(0, 7 bits)
 }
 
 import jsteward.blocks.eci.EciCmdDefs._
@@ -107,7 +133,7 @@ case class EciVcCatMrsp9to10() extends Bundle {
   val xb1 = Bool()
   val dirty = Bits(4 bits)
   val xb1_2 = Bool()
-  val cacheLineIndex = Bits(33 bits)
+  val cacheLineIndex = EciClIndex
   val fillo = Bits(2 bits)
   val xb5 = Bits(5 bits)
 }
