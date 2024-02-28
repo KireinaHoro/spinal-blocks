@@ -74,6 +74,19 @@ package object axi {
   }
 
   implicit class RichAxi4(axi: Axi4) {
+    def remapAddr(f: UInt => UInt): Axi4 = {
+      val ret = Axi4(axi.config)
+      ret.aw.translateFrom(axi.aw) { case (r, o) =>
+        r.addr := f(o.addr)
+        r.assignUnassignedByName(o)
+      }
+      ret.ar.translateFrom(axi.ar) { case (r, o) =>
+        r.addr := f(o.addr)
+        r.assignUnassignedByName(o)
+      }
+      ret
+    }
+
     def resize(newWidth: Int): Axi4 = {
       if (newWidth == axi.config.dataWidth) {
         axi
