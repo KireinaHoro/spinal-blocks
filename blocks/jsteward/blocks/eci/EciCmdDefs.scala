@@ -80,7 +80,7 @@ case class EciVcCatMrsp0to2() extends Bundle {
 
 case class EciVcCatMrsp3to8() extends Bundle {
   val opcode = EciOpcode
-  val xb3 = Bits(4 bits)
+  val xb3 = Bits(3 bits)
   val hreqId = EciHreqId
   val dmask = EciDmask
   val ns = Bool()
@@ -153,45 +153,49 @@ case class LclMrsp2() extends Bundle {
 }
 
 case class EciWord() extends Union {
-  // val mreq0to10 = EciVcCatMreq0to10()
-  val rldi = EciVcCatMreq0to10()
-  val rstt = EciVcCatMreq0to10()
-  val rldx = EciVcCatMreq0to10()
-  val rc2d_o = EciVcCatMreq0to10()
-  val rc2d_s = EciVcCatMreq0to10()
-  val gsync = EciVcCatMreq24()
+  // val mreq0to10 = newElement(EciVcCatMreq0to10())
+  val rldi = newElement(EciVcCatMreq0to10())
+  val rstt = newElement(EciVcCatMreq0to10())
+  val rldx = newElement(EciVcCatMreq0to10())
+  val rc2d_o = newElement(EciVcCatMreq0to10())
+  val rc2d_s = newElement(EciVcCatMreq0to10())
+  val gsync = newElement(EciVcCatMreq24())
 
-  // val mrsp0to2 = EciVcCatMrsp0to2()
-  val vicd = EciVcCatMrsp0to2()
-  val vicc = EciVcCatMrsp0to2()
-  val vics = EciVcCatMrsp0to2()
-  // val mrsp3to8 = EciVcCatMrsp3to8()
-  val vicdhi = EciVcCatMrsp3to8()
-  val hakd = EciVcCatMrsp3to8()
-  val hakn_s = EciVcCatMrsp3to8()
-  val haki = EciVcCatMrsp3to8()
-  val haks = EciVcCatMrsp3to8()
-  val hakn = EciVcCatMrsp3to8()
-  val gsdn = EciVcCatMrsp24()
+  // val mrsp0to2 = newElement(EciVcCatMrsp0to2())
+  val vicd = newElement(EciVcCatMrsp0to2())
+  val vicc = newElement(EciVcCatMrsp0to2())
+  val vics = newElement(EciVcCatMrsp0to2())
+  // val mrsp3to8 = newElement(EciVcCatMrsp3to8())
+  val vicdhi = newElement(EciVcCatMrsp3to8())
+  val hakd = newElement(EciVcCatMrsp3to8())
+  val hakn_s = newElement(EciVcCatMrsp3to8())
+  val haki = newElement(EciVcCatMrsp3to8())
+  val haks = newElement(EciVcCatMrsp3to8())
+  val hakn = newElement(EciVcCatMrsp3to8())
+  val gsdn = newElement(EciVcCatMrsp24())
 
-  val pemd = EciVcCatMrsp9to10()
-  val psha_new = EciVcCatMrsp9to10()
+  val pemd = newElement(EciVcCatMrsp9to10())
+  val psha_new = newElement(EciVcCatMrsp9to10())
 
-  // val mfwdGeneric = EciVcCatMfwd0to15()
-  val fevx_eh = EciVcCatMfwd0to15()
-  val sinv_h = EciVcCatMfwd0to15()
+  // val mfwdGeneric = newElement(EciVcCatMfwd0to15())
+  val fevx_eh = newElement(EciVcCatMfwd0to15())
+  val sinv_h = newElement(EciVcCatMfwd0to15())
 
-  // val lclMfwdGeneric = LclMfwd()
-  val lc = LclMfwd()
-  val lci = LclMfwd()
+  // val lclMfwdGeneric = newElement(LclMfwd())
+  val lc = newElement(LclMfwd())
+  val lci = newElement(LclMfwd())
 
-  // val lclMrsp0to1 = LclMrsp0to1()
-  val lca = LclMrsp0to1()
-  val lcia = LclMrsp0to1()
+  // val lclMrsp0to1 = newElement(LclMrsp0to1())
+  val lca = newElement(LclMrsp0to1())
+  val lcia = newElement(LclMrsp0to1())
 
-  // val lclMrsp2 = LclMrsp2()
-  val ul = LclMrsp2()
+  // val lclMrsp2 = newElement(LclMrsp2())
+  val ul = newElement(LclMrsp2())
 
-  assert(getBitsWidth == ECI_WORD_WIDTH)
+  override def postInitCallback(): EciWord.this.type = {
+    super.postInitCallback()
+    assert(getBitsWidth == ECI_WORD_WIDTH, s"Actual width of EciWord $getBitsWidth != $ECI_WORD_WIDTH")
+    this
+  }
 }
 

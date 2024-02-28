@@ -14,6 +14,8 @@ case class LclChannel() extends Bundle {
 
 /** Interface with dcs_2_axi.sv (DCS with read and write data wrapped in AXI) */
 case class DcsInterface(axiConfig: Axi4Config) extends Bundle {
+  assert(64 to 1024 contains axiConfig.dataWidth, s"DCS desc_to_axi does not support dataWidth ${axiConfig.dataWidth}")
+
   /** read and write data AXI channel */
   val axi = slave(Axi4(axiConfig))
   /** request channel for clean (LC) and clean-invalidate (LCI) */
