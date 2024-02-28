@@ -5,6 +5,7 @@ import spinal.core._
 import spinal.lib
 import spinal.lib._
 import spinal.lib.bus.amba4.axi._
+import spinal.lib.bus.amba4.axilite.AxiLite4
 import spinal.lib.bus.amba4.axis.{Axi4Stream, Axi4StreamConfig}
 import spinal.lib.bus.amba4.axis.Axi4Stream.Axi4Stream
 
@@ -27,7 +28,7 @@ package object axi {
 
   def renameAxi4IO(c: Component = Component.current): Unit = {
     c.getAllIo.foreach { bt =>
-      val pattern = "^([sm]_axi.*)(aw|w|b|ar|r)_(?:payload_)?([^_]+)$".r
+      val pattern = "^([sm]_axil?.*)(aw|w|b|ar|r)_(?:payload_)?([^_]+)$".r
       for (pm <- pattern.findFirstMatchIn(bt.getName)) {
         bt.setName(pm.group(1) + pm.group(2) + pm.group(3))
       }
@@ -60,11 +61,27 @@ package object axi {
     }
   }
 
+  implicit class RichAxiLite4(axil: AxiLite4) {
+    def resize(newWidth: Int): AxiLite4 = {
+      if (newWidth == axil.config.dataWidth) {
+        axil
+      } else {
+        val adapter = new AxiLiteAdapter(axil.config, newWidth)
+        axil >> adapter.io.s_axil
+        adapter.io.m_axil
+      }
+    }
+  }
+
   implicit class RichAxi4(axi: Axi4) {
     def resize(newWidth: Int): Axi4 = {
-      val adapter = new AxiAdapter(axi.config, newWidth)
-      axi >> adapter.slavePort
-      adapter.masterPort
+      if (newWidth == axi.config.dataWidth) {
+        axi
+      } else {
+        val adapter = new AxiAdapter(axi.config, newWidth)
+        axi >> adapter.slavePort
+        adapter.masterPort
+      }
     }
 
     def toSpinal(config: Axi4Config): Axi4 = {
