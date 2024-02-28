@@ -1,6 +1,6 @@
 [submodule "deps/spinalhdl"]
 	path = deps/spinalhdl
-	url = git@github.com:KireinaHoro/SpinalHDL
+	url = https://github.com/KireinaHoro/SpinalHDL
 [submodule "deps/verilog-axi"]
 	path = deps/verilog-axi
 	url = https://github.com/alexforencich/verilog-axi
