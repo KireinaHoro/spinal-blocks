@@ -62,43 +62,45 @@ package object axi {
   }
 
   implicit class RichAxiLite4(axil: AxiLite4) {
-    def resize(newWidth: Int): AxiLite4 = {
-      if (newWidth == axil.config.dataWidth) {
+    def resize(newWidth: Int): AxiLite4 = new Composite(axil, "resized") {
+      val ret = if (newWidth == axil.config.dataWidth) {
         axil
       } else {
-        val adapter = new AxiLiteAdapter(axil.config, newWidth)
+        val adapter = new AxiLiteAdapter(axil.config, newWidth) setCompositeName (axil, "adapter")
         axil >> adapter.io.s_axil
         adapter.io.m_axil
       }
-    }
+    }.ret
   }
 
   implicit class RichAxi4(axi: Axi4) {
-    def remapAddr(f: UInt => UInt): Axi4 = {
+    def remapAddr(f: UInt => UInt): Axi4 = new Composite(axi, "remapped") {
       val ret = Axi4(axi.config)
       ret.aw.translateFrom(axi.aw) { case (r, o) =>
         r.addr := f(o.addr)
         r.assignUnassignedByName(o)
       }
+      ret.w << axi.w
+      ret.b >> axi.b
       ret.ar.translateFrom(axi.ar) { case (r, o) =>
         r.addr := f(o.addr)
         r.assignUnassignedByName(o)
       }
-      ret
-    }
+      ret.r >> axi.r
+    }.ret
 
-    def resize(newWidth: Int): Axi4 = {
-      if (newWidth == axi.config.dataWidth) {
+    def resize(newWidth: Int): Axi4 = new Composite(axi, "resized") {
+      val ret = if (newWidth == axi.config.dataWidth) {
         axi
       } else {
-        val adapter = new AxiAdapter(axi.config, newWidth)
+        val adapter = new AxiAdapter(axi.config, newWidth) setCompositeName (axi, "adapter")
         axi >> adapter.slavePort
         adapter.masterPort
       }
-    }
+    }.ret
 
-    def toSpinal(config: Axi4Config): Axi4 = {
-      val ret = Axi4(config).setCompositeName(axi, "toSpinal", true)
+    def toSpinal(config: Axi4Config): Axi4 = new Composite(axi, "toSpinal") {
+      val ret = Axi4(config)
       val masterChannels: Seq[Axi4 => lib.Stream[_ <: Bundle]] = Seq(_.ar, _.aw, _.w)
       val slaveChannels: Seq[Axi4 => lib.Stream[_ <: Bundle]] = Seq(_.r, _.b)
       val driverChannels = if (axi.isMasterInterface) masterChannels else slaveChannels
@@ -109,8 +111,7 @@ package object axi {
       loadChannels.foreach { c =>
         c(axi).translateFrom(c(ret))(_ <<? _)
       }
-      ret
-    }
+    }.ret
   }
 
   // convert a spinal lib Axi4StreamConfig to verilog-axis format
