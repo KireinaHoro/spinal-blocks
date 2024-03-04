@@ -1,6 +1,7 @@
 package jsteward.blocks
 
 import axi.Axi4StreamCustom.Axi4StreamCustom
+import jsteward.blocks.misc._
 import spinal.core._
 import spinal.lib
 import spinal.lib._
@@ -50,17 +51,6 @@ package object axi {
 
   def axisRTLFile(name: String) = getClass.getResource(s"/verilog-axis/rtl/$name.v").getPath
 
-  implicit class RichBundle(b: Bundle) {
-    def <<?(that: Bundle): Unit = {
-      b.assignSomeByName(that)
-      b.assignDontCareToUnasigned()
-    }
-
-    def >>?(that: Bundle): Unit = {
-      that <<? b
-    }
-  }
-
   implicit class RichAxiLite4(axil: AxiLite4) {
     def resize(newWidth: Int): AxiLite4 = new Composite(axil, "resized") {
       val ret = if (newWidth == axil.config.dataWidth) {
@@ -76,16 +66,10 @@ package object axi {
   implicit class RichAxi4(axi: Axi4) {
     def remapAddr(f: UInt => UInt): Axi4 = new Composite(axi, "remapped") {
       val ret = Axi4(axi.config)
-      ret.aw.translateFrom(axi.aw) { case (r, o) =>
-        r.addr := f(o.addr)
-        r.assignUnassignedByName(o)
-      }
+      ret.aw << axi.aw.mapPayloadElement(_.addr)(f)
       ret.w << axi.w
       ret.b >> axi.b
-      ret.ar.translateFrom(axi.ar) { case (r, o) =>
-        r.addr := f(o.addr)
-        r.assignUnassignedByName(o)
-      }
+      ret.ar << axi.ar.mapPayloadElement(_.addr)(f)
       ret.r >> axi.r
     }.ret
 

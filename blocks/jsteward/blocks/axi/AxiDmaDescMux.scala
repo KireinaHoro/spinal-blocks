@@ -1,5 +1,6 @@
 package jsteward.blocks.axi
 
+import jsteward.blocks.misc.RichBundle
 import spinal.core._
 import spinal.lib._
 import spinal.lib.io.InOutVecToBits
