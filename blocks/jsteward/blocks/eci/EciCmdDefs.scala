@@ -76,105 +76,105 @@ import jsteward.blocks.eci.EciCmdDefs._
 
 case class EciVcCatMreq0to10() extends Bundle {
   val opcode = EciOpcode
-  val xb4 = Bits(4 bits)
+  val xb4 = Bits(4 bits).assignDontCare()
   val rreqId = EciId
   val dmask = EciDmask
   val ns = Bool()
-  val xb3 = Bits(3 bits)
-  val xb2 = Bits(2 bits)
+  val xb3 = Bits(3 bits).assignDontCare()
+  val xb2 = Bits(2 bits).assignDontCare()
   val address = EciAddress
 }
 
 case class EciVcCatMreq24() extends Bundle {
   val opcode = EciOpcode
-  val xb3 = Bits(4 bits)
+  val xb3 = Bits(4 bits).assignDontCare()
   val rreqId = EciId
-  val xb40 = Bits(40 bits)
+  val xb40 = Bits(40 bits).assignDontCare()
   val rtad = EciRtad
-  val xb1 = Bool()
+  val xb1 = Bool().assignDontCare()
   val ppvid = EciPpvid
 }
 
 case class EciVcCatMrsp0to2() extends Bundle {
   val opcode = EciOpcode
-  val xb10 = Bits(9 bits)
+  val xb10 = Bits(9 bits).assignDontCare()
   val dmask = EciDmask
   val ns = Bool()
-  val xb5 = Bits(5 bits)
+  val xb5 = Bits(5 bits).assignDontCare()
   val address = EciAddress
 }
 
 case class EciVcCatMrsp3to8() extends Bundle {
   val opcode = EciOpcode
-  val xb3 = Bits(3 bits)
+  val xb3 = Bits(3 bits).assignDontCare()
   val hreqId = EciHreqId
   val dmask = EciDmask
   val ns = Bool()
-  val xb5 = Bits(5 bits)
+  val xb5 = Bits(5 bits).assignDontCare()
   val address = EciAddress
 }
 
 case class EciVcCatMrsp24() extends Bundle {
   val opcode = EciOpcode
-  val xb12 = Bits(13 bits)
+  val xb12 = Bits(13 bits).assignDontCare()
   val ns = Bool()
-  val xb35 = Bits(35 bits)
+  val xb35 = Bits(35 bits).assignDontCare()
   val rtad = EciRtad
-  val xb1 = Bool()
+  val xb1 = Bool().assignDontCare()
   val ppvid = EciPpvid
 }
 
 case class EciVcCatMrsp9to10() extends Bundle {
   val opcode = EciOpcode
   val nxm = Bool()
-  val xb3 = Bits(3 bits)
+  val xb3 = Bits(3 bits).assignDontCare()
   val rreqId = EciId
   val dmask = EciDmask
-  val xb1 = Bool()
+  val xb1 = Bool().assignDontCare()
   val dirty = Bits(4 bits)
-  val xb1_2 = Bool()
+  val xb1_2 = Bool().assignDontCare()
   val cacheLineIndex = EciClIndex
   val fillo = Bits(2 bits)
-  val xb5 = Bits(5 bits)
+  val xb5 = Bits(5 bits).assignDontCare()
 }
 
 case class EciVcCatMfwd0to15() extends Bundle {
   val opcode = EciOpcode
-  val xb3 = Bits(3 bits)
+  val xb3 = Bits(3 bits).assignDontCare()
   val hreqId = EciHreqId
   val dmask = EciDmask
   val ns = Bool()
-  val xb1 = Bool()
+  val xb1 = Bool().assignDontCare()
   val rnode = EciNodeId
-  val xb2 = Bits(2 bits)
+  val xb2 = Bits(2 bits).assignDontCare()
   val address = EciAddress
 }
 
 case class LclMfwd() extends Bundle {
   val opcode = EciOpcode
-  val xb3 = Bits(3 bits)
+  val xb3 = Bits(3 bits).assignDontCare()
   val hreqId = EciHreqId
   val dmask = EciDmask
   val ns = Bool()
-  val xb1 = Bool()
+  val xb1 = Bool().assignDontCare()
   val rnode = EciNodeId
-  val xb2 = Bits(2 bits)
+  val xb2 = Bits(2 bits).assignDontCare()
   val address = EciAddress
 }
 
 case class LclMrsp0to1() extends Bundle {
   val opcode = EciOpcode
-  val xb3 = Bits(3 bits)
+  val xb3 = Bits(3 bits).assignDontCare()
   val hreqId = EciHreqId
   val dmask = EciDmask
   val ns = Bool()
-  val xb5 = Bits(5 bits)
+  val xb5 = Bits(5 bits).assignDontCare()
   val address = EciAddress
 }
 
 case class LclMrsp2() extends Bundle {
   val opcode = EciOpcode
-  val xb19 = Bits(19 bits)
+  val xb19 = Bits(19 bits).assignDontCare()
   val address = EciAddress
 }
 
