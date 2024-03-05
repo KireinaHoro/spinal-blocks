@@ -112,33 +112,31 @@ package object axi {
     )
 
   implicit class RichAxi4Stream(axis: Axi4Stream) {
-    def toSpinal(config: Axi4StreamConfig): Axi4Stream = {
-      val ret = Axi4Stream(config).setCompositeName(axis, "toSpinal", true)
+    def toSpinal(config: Axi4StreamConfig): Axi4Stream = new Composite(axis, "toSpinal") {
+      val ret = Axi4Stream(config)
       if (axis.isMasterInterface) {
         ret.translateFrom(axis)(_ <<? _)
       } else {
         axis.translateFrom(ret)(_ <<? _)
       }
-      ret
-    }
+    }.ret
 
-    def frameLength: Flow[UInt] = {
+    def frameLength: Flow[UInt] = new Composite(axis, "frameLength") {
       val clockDomain = axis.getTag(classOf[ClockDomainTag]).map(_.clockDomain).getOrElse(ClockDomain.current)
       val monitor = clockDomain(AxiStreamFrameLen(axis.config))
       monitor.driveFrom(axis)
-      monitor.io.frame_len
-    }
+      val ret = monitor.io.frame_len
+    }.ret
   }
 
   implicit class RichAxi4StreamCustom[T <: Data](axis: Axi4StreamCustom[T]) {
-    def toSpinal(config: Axi4StreamCustomConfig[T]): Axi4StreamCustom[T] = {
-      val ret = Axi4StreamCustom(config).setCompositeName(axis, "toSpinal", true)
+    def toSpinal(config: Axi4StreamCustomConfig[T]): Axi4StreamCustom[T] = new Composite(axis, "toSpinal") {
+      val ret = Axi4StreamCustom(config)
       if (axis.isMasterInterface) {
         ret.translateFrom(axis)(_ <<? _)
       } else {
         axis.translateFrom(ret)(_ <<? _)
       }
-      ret
-    }
+    }.ret
   }
 }
