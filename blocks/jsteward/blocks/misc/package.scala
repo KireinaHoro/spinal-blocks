@@ -16,9 +16,10 @@ package object misc {
 
   implicit class RichMultiData[T <: MultiData](b: T) {
     def mapElement[E <: Data](locator: T => E)(f: E => E): T = {
-      val ret = b.clone.asInstanceOf[T]
+      val ret = b.clone.asInstanceOf[T].allowOverride()
+      ret := b
       locator(ret) := f(locator(b))
-      ret.assignUnassignedByName(b)
+      // ret.assignUnassignedByName(b) // doesn't work for Union!
       ret
     }
   }
