@@ -207,11 +207,11 @@ case class EciWord() extends Union {
   val fevx_eh = newElement(EciVcCatMfwd0to15())
   val sinv_h = newElement(EciVcCatMfwd0to15())
 
-  // val lclMfwdGeneric = newElement(LclMfwd())
+  val lclMfwdGeneric = newElement(LclMfwd())
   val lc = newElement(LclMfwd())
   val lci = newElement(LclMfwd())
 
-  // val lclMrsp0to1 = newElement(LclMrsp0to1())
+  val lclMrsp0to1 = newElement(LclMrsp0to1())
   val lca = newElement(LclMrsp0to1())
   val lcia = newElement(LclMrsp0to1())
 
