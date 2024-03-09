@@ -76,7 +76,7 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
 
     (0 until numCls) foreach { idx =>
       val clOffset = roundedAddr + idx * ECI_CL_SIZE_BYTES
-      builder ++= findCl(clOffset).read
+      builder ++= findCl(aliasAddress(clOffset)).read
     }
 
     builder.result().toList.slice(padFront, padFront + totalBytes)
@@ -102,7 +102,7 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
 
     (0 until numCls) foreach { idx =>
       val clOffset = roundedAddr + idx * ECI_CL_SIZE_BYTES
-      findCl(clOffset).modify { clData =>
+      findCl(aliasAddress(clOffset)).modify { clData =>
         idx match {
           case 0 => clData.take(padFront) ++ data.take(ECI_CL_SIZE_BYTES - padFront)
           case i if i == numCls - 1 => data.takeRight(ECI_CL_SIZE_BYTES - padBack) ++ clData.takeRight(padBack)
