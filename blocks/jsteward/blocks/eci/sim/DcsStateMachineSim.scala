@@ -41,7 +41,7 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
   private def log(msg: String) = println(s"DcsStateMachineSim $id: $msg")
 
   def dumpState(): Unit = {
-    log(s"[${state.name}] (${if (locked) "L" else "."}) ${data.bytesToHex}")
+    log(s"[${state.name}] (${if (locked) "L" else "."}) ${if (state != Invalid) data.bytesToHex else ""}")
   }
 
   // TODO: more accessor patterns from CPU
@@ -79,6 +79,7 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
     assert(Seq(Invalid, Shared).contains(state))
     assert(!locked, s"trying to lock $id that's already locked")
     _locked = true
+    log("locked")
   }
 
   /**
@@ -88,15 +89,19 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
   private[sim] def unlock(): Unit = {
     assert(locked)
     _locked = false
+    log("unlocked")
   }
   private[sim] def locked: Boolean = _locked
 
   private def transition(newState: EciClState)(body: EciClState => Unit) = {
-    log(s"${state.name} -> ${newState.name}")
-    // prevent upgrade if is lock
-    if (state < newState) waitUntil(!locked)
-    body(state)
-    state = newState
+    if (state != newState) {
+      log(s"${state.name} -> ${newState.name}")
+      // prevent upgrade if is lock
+      if (state < newState) waitUntil(!locked)
+      body(state)
+      state = newState
+      dumpState()
+    }
   }
 
   /** Change state to modified.
