@@ -28,6 +28,8 @@ trait ClLoadStore {
  * from the CPU (`read`, `modify`, etc.) to actions on the DCS memory interface.
  * @param id address of the cacheline (only for dumping state)
  * @param loadStore load and store functions to refill and flush cacheline
+ * @groupname cpu APIs for CPU simulation clients (i.e. testbench)
+ * @groupname dcs APIs for [[DcsAppMaster]]
  */
 class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
   private var data: List[Byte] = List.fill(128)(0xff.toByte)
@@ -41,33 +43,59 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
   }
 
   // TODO: more accessor patterns from CPU
+  /**
+   * Read from this cacheline.
+   * @group cpu
+   */
   def read: List[Byte] = {
     toShared()
     data
   }
+
+  /**
+   * Map the cacheline to new contents.
+   * @group cpu
+   */
   def modify(mutator: List[Byte] => List[Byte]): Unit = {
     toModified()
     data = mutator(data)
   }
+
+  /**
+   * Invalidate the current cacheline and write-back if dirty.
+   * @group cpu
+   */
   def invalidate(): Unit = {
     toInvalid()
   }
 
-  def lock(): Unit = {
+  /**
+   * Lock this cacheline so that it doesn't respond to load/store and state transition requests.
+   * @group dcs
+   */
+  private[sim] def lock(): Unit = {
     assert(Seq(Invalid, Shared).contains(state))
     m.lock()
   }
-  def unlock(): Unit = {
+
+  /**
+   * Unlock this cacheline.
+   * @group dcs
+   */
+  private[sim] def unlock(): Unit = {
     m.unlock()
   }
-  def locked: Boolean = m.locked
+  private[sim] def locked: Boolean = m.locked
 
   private def transition(newState: EciClState) = {
     log(s"${state.name} -> ${newState.name}")
     state = newState
   }
 
-  def toModified() = {
+  /** Change state to modified.
+   * @group dcs
+   */
+  private[sim] def toModified() = {
     m.await()
     state match {
       case Invalid => data = loadStore.load
@@ -76,7 +104,10 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
     transition(Modified)
   }
 
-  def toExclusive() = {
+  /** Change state to exclusive.
+   * @group dcs
+   */
+  private[sim] def toExclusive() = {
     m.await()
     state match {
       case Invalid => data = loadStore.load
@@ -86,7 +117,10 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
     transition(Exclusive)
   }
 
-  def toShared() = {
+  /** Change state to shared.
+   * @group dcs
+   */
+  private[sim] def toShared() = {
     m.await()
     state match {
       case Invalid => data = loadStore.load
@@ -96,7 +130,10 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
     transition(Shared)
   }
 
-  def toInvalid() = {
+  /** Change state to invalid.
+   * @group dcs
+   */
+  private[sim] def toInvalid() = {
     m.await()
     state match {
       case Modified => loadStore.store(data)
