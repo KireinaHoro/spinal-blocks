@@ -22,8 +22,8 @@ import EciCmdDefs.ECI_CL_SIZE_BYTES
 case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain: ClockDomain) {
   // index is unaliased address
   val clMap = mutable.HashMap[BigInt, DcsStateMachineSim]()
-  val dcsOddAxiMaster = Axi4Master(dcsOdd.axi, clockDomain)
-  val dcsEvenAxiMaster = Axi4Master(dcsEven.axi, clockDomain)
+  val dcsOddAxiMaster = Axi4Master(dcsOdd.axi, clockDomain, "dcsOdd")
+  val dcsEvenAxiMaster = Axi4Master(dcsEven.axi, clockDomain, "dcsEven")
 
   private def log(msg: String): Unit = println(s"DcsAppMaster: $msg")
 
@@ -125,17 +125,18 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
         case 17 => assert(idx == 0)
       }
 
-      val aliased = req.data.lclMfwdGeneric.address.toBigInt
+      val aliased = req.data.lclMfwdGeneric.simGet(_.address).toBigInt
       val addr = unaliasAddress(aliased)
       val cl = findCl(aliased)
 
-      assert(req.data.lclMfwdGeneric.dmask.toInt == 0xf)
-      assert(req.data.lclMfwdGeneric.ns.toBoolean)
-      assert(req.data.lclMfwdGeneric.rnode.toInt == 1)
+      val dmask = req.data.lclMfwdGeneric.simGet(_.dmask).toInt
+      assert(dmask == 0xf, f"dmask != 0xf: $dmask%#x")
+      assert(req.data.lclMfwdGeneric.simGet(_.ns).toBoolean)
+      assert(req.data.lclMfwdGeneric.simGet(_.rnode).toInt == 1)
 
       // process state change
-      val opcode = req.data.lclMfwdGeneric.opcode.toInt
-      val hreqId = req.data.lclMfwdGeneric.hreqId.toInt
+      val opcode = req.data.lclMfwdGeneric.simGet(_.opcode).toInt
+      val hreqId = req.data.lclMfwdGeneric.simGet(_.hreqId).toInt
 
       opcode match {
         case 0 => // LC
@@ -149,11 +150,11 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
 
       // queue response
       respQueue += { chan =>
-        chan.data.lclMrsp0to1.opcode #= opcode
-        chan.data.lclMrsp0to1.hreqId #= hreqId
-        chan.data.lclMrsp0to1.dmask #= 0xf
-        chan.data.lclMrsp0to1.ns #= true
-        chan.data.lclMrsp0to1.address #= aliased
+        chan.data.lclMrsp0to1.simGet(_.opcode) #= opcode
+        chan.data.lclMrsp0to1.simGet(_.hreqId) #= hreqId
+        chan.data.lclMrsp0to1.simGet(_.dmask) #= 0xf
+        chan.data.lclMrsp0to1.simGet(_.ns) #= true
+        chan.data.lclMrsp0to1.simGet(_.address) #= aliased
       }
     }
 
@@ -172,11 +173,11 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
         case 19 => assert(idx == 0)
       }
 
-      val aliased = ul.data.ul.address.toBigInt
+      val aliased = ul.data.ul.simGet(_.address).toBigInt
       val addr = unaliasAddress(aliased)
       val cl = findCl(aliased)
 
-      assert(ul.data.ul.opcode.toInt == 2)
+      assert(ul.data.ul.simGet(_.opcode).toInt == 2)
       log(f"UL:  addr $addr%#x (aliased $aliased%#x)")
       cl.unlock()
     }
