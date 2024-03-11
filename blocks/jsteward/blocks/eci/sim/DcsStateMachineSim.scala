@@ -15,7 +15,7 @@ object EciClStates extends Enumeration {
   }
 }
 import EciClStates._
-import spinal.core.sim.SimMutex
+import spinal.core.sim.waitUntil
 import spinal.lib.BytesRicher
 
 trait ClLoadStore {
@@ -28,15 +28,17 @@ trait ClLoadStore {
  * from the CPU (`read`, `modify`, etc.) to actions on the DCS memory interface.
  * @param id address of the cacheline (only for dumping state)
  * @param loadStore load and store functions to refill and flush cacheline
- * @groupname cpu APIs for CPU simulation clients (i.e. testbench)
- * @groupname dcs APIs for [[DcsAppMaster]]
+ * @groupname cpu APIs for CPU simulation clients (i.e. testbench).  These will be called from a thread simulation context
+ *                so it's ok to block
+ * @groupname dcs APIs for [[DcsAppMaster]].  These will be called from a callback of StreamMonitor so we should not
+ *                block!
  */
 class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
   private var data: List[Byte] = List.fill(128)(0xff.toByte)
   private var state: EciClState = Invalid
-  private val m = SimMutex()
+  private var _locked = false
 
-  private def log(msg: String) = println(s"$id: $msg")
+  private def log(msg: String) = println(s"DcsStateMachineSim $id: $msg")
 
   def dumpState(): Unit = {
     log(s"[${state.name}] (${if (locked) "L" else "."}) ${data.bytesToHex}")
@@ -75,7 +77,8 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
    */
   private[sim] def lock(): Unit = {
     assert(Seq(Invalid, Shared).contains(state))
-    m.lock()
+    assert(!locked, s"trying to lock $id that's already locked")
+    _locked = true
   }
 
   /**
@@ -83,12 +86,16 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
    * @group dcs
    */
   private[sim] def unlock(): Unit = {
-    m.unlock()
+    assert(locked)
+    _locked = false
   }
-  private[sim] def locked: Boolean = m.locked
+  private[sim] def locked: Boolean = _locked
 
-  private def transition(newState: EciClState) = {
+  private def transition(newState: EciClState)(body: EciClState => Unit) = {
     log(s"${state.name} -> ${newState.name}")
+    // prevent upgrade if is lock
+    if (state < newState) waitUntil(!locked)
+    body(state)
     state = newState
   }
 
@@ -96,49 +103,41 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
    * @group dcs
    */
   private[sim] def toModified() = {
-    m.await()
-    state match {
+    transition(Modified) {
       case Invalid => data = loadStore.load
       case _ =>
     }
-    transition(Modified)
   }
 
   /** Change state to exclusive.
    * @group dcs
    */
   private[sim] def toExclusive() = {
-    m.await()
-    state match {
+    transition(Exclusive) {
       case Invalid => data = loadStore.load
       case Modified => loadStore.store(data)
       case _ =>
     }
-    transition(Exclusive)
   }
 
   /** Change state to shared.
    * @group dcs
    */
   private[sim] def toShared() = {
-    m.await()
-    state match {
+    transition(Shared) {
       case Invalid => data = loadStore.load
       case Modified => loadStore.store(data)
       case _ =>
     }
-    transition(Shared)
   }
 
   /** Change state to invalid.
    * @group dcs
    */
   private[sim] def toInvalid() = {
-    m.await()
-    state match {
+    transition(Invalid) {
       case Modified => loadStore.store(data)
       case _ =>
     }
-    transition(Invalid)
   }
 }
