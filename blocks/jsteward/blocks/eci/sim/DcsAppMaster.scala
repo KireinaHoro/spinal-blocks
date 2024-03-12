@@ -2,7 +2,7 @@ package jsteward.blocks.eci.sim
 
 import jsteward.blocks.eci.{DcsInterface, EciCmdDefs, LclChannel}
 import jsteward.blocks.eci.sim.BigIntRicher
-import spinal.core.{ClockDomain, roundUp}
+import spinal.core.{ClockDomain, IntToBuilder, roundUp}
 import spinal.core.sim._
 import spinal.lib._
 import spinal.lib.bus.amba4.axi.sim.Axi4Master
@@ -145,10 +145,10 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
 
       opcode match {
         case 0 => // LC
-          log(f"LC:  ID $hreqId addr $addr%#x (aliased $aliased%#x)")
+          log(f"LC:   ID $hreqId addr $addr%#x (aliased $aliased%#x)")
           cl.toShared()
         case 1 => // LCI
-          log(f"LCI: ID $hreqId addr $addr%#x (aliased $aliased%#x)")
+          log(f"LCI:  ID $hreqId addr $addr%#x (aliased $aliased%#x)")
           cl.toInvalid()
       }
       cl.lock()
@@ -156,11 +156,18 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
       // queue response
       respQueue += { chan =>
         stallLcl = false
+
         chan.data.lclMrsp0to1.simGet(_.opcode) #= opcode
         chan.data.lclMrsp0to1.simGet(_.hreqId) #= hreqId
         chan.data.lclMrsp0to1.simGet(_.dmask) #= 0xf
         chan.data.lclMrsp0to1.simGet(_.ns) #= true
         chan.data.lclMrsp0to1.simGet(_.address) #= aliased
+        chan.data.lclMrsp0to1.commit()
+
+        opcode match {
+          case 0 => log(f"LCA:  ID $hreqId addr $addr%#x (aliased $aliased%#x)")
+          case 1 => log(f"LCIA: ID $hreqId addr $addr%#x (aliased $aliased%#x)")
+        }
       }
     }
 
