@@ -167,6 +167,8 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
         chan.data.lclMrsp0to1.simGet(_.ns) #= true
         chan.data.lclMrsp0to1.simGet(_.address) #= aliased
         chan.data.lclMrsp0to1.commit()
+        chan.size #= 1
+        chan.vc #= (if (idx == 0) 19 else 18)
 
         opcode match {
           case 0 => log(f"LCA:  ID $hreqId addr $addr%#x (aliased $aliased%#x)")
