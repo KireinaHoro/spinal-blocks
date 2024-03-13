@@ -25,6 +25,9 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
   val dcsOddAxiMaster = Axi4Master(dcsOdd.axi, clockDomain, "dcsOdd")
   val dcsEvenAxiMaster = Axi4Master(dcsEven.axi, clockDomain, "dcsEven")
 
+  dcsOddAxiMaster.reset()
+  dcsEvenAxiMaster.reset()
+
   private def log(msg: String): Unit = println(s"DcsAppMaster: $msg")
 
   def genLoadStore(addr: BigInt): ClLoadStore = {
