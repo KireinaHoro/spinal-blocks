@@ -52,7 +52,8 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
 
   // operates on aliased address!
   def findCl(addr: BigInt): DcsStateMachineSim = {
-    clMap.getOrElseUpdate(addr, new DcsStateMachineSim(f"CL $addr%#x", genLoadStore(addr)))
+    val unaliased = unaliasAddress(addr)
+    clMap.getOrElseUpdate(addr, new DcsStateMachineSim(f"CL $unaliased%#x", genLoadStore(unaliased)))
   }
 
   def roundAddr(addr: BigInt): BigInt = addr - (addr & (ECI_CL_SIZE_BYTES - 1))
