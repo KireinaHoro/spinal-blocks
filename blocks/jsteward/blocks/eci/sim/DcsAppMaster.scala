@@ -138,6 +138,12 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
       val addr = unaliasAddress(aliased)
       val cl = findCl(aliased)
 
+      // deadlock detection: LC/LCI should not be sent when reload is blocked
+      // refer to CCKit Figure 7.4
+      // FIXME: there's more cases to disallow
+      // FIXME: this also disallows when the reload does not depend on LCA/LCIA
+      assert(!cl.memInProgress, "potential deadlock/race condition: lc/lci sent during cacheline reload")
+
       val dmask = req.data.lclMfwdGeneric.simGet(_.dmask).toInt
       assert(dmask == 0xf, f"dmask != 0xf: $dmask%#x")
       assert(req.data.lclMfwdGeneric.simGet(_.ns).toBoolean)

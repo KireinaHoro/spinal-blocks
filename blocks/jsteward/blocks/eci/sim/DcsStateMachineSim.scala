@@ -93,6 +93,21 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
   }
   private[sim] def locked: Boolean = _locked
 
+  private var inRefill = false
+  private def doRefill() = {
+    inRefill = true
+    data = loadStore.load
+    inRefill = false
+  }
+
+  private var inFlush = false
+  private def doFlush() = {
+    inFlush = true
+    loadStore.store(data)
+    inFlush = false
+  }
+  private[sim] def memInProgress: Boolean = inRefill || inFlush
+
   private def transition(newState: EciClState)(body: EciClState => Unit) = {
     if (state != newState) {
       log(s"${state.name} -> ${newState.name}")
@@ -109,7 +124,7 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
    */
   private[sim] def toModified() = {
     transition(Modified) {
-      case Invalid => data = loadStore.load
+      case Invalid => doRefill()
       case _ =>
     }
   }
@@ -119,8 +134,8 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
    */
   private[sim] def toExclusive() = {
     transition(Exclusive) {
-      case Invalid => data = loadStore.load
-      case Modified => loadStore.store(data)
+      case Invalid => doRefill()
+      case Modified => doFlush()
       case _ =>
     }
   }
@@ -130,8 +145,8 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
    */
   private[sim] def toShared() = {
     transition(Shared) {
-      case Invalid => data = loadStore.load
-      case Modified => loadStore.store(data)
+      case Invalid => doRefill()
+      case Modified => doFlush()
       case _ =>
     }
   }
@@ -141,7 +156,7 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
    */
   private[sim] def toInvalid() = {
     transition(Invalid) {
-      case Modified => loadStore.store(data)
+      case Modified => doRefill()
       case _ =>
     }
   }
