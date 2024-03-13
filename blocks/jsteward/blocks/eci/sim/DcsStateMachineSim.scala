@@ -35,14 +35,15 @@ trait ClLoadStore {
  */
 class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
   private var data: List[Byte] = List.fill(128)(0xff.toByte)
-  private var state: EciClState = Invalid
+  private var _state: EciClState = Invalid
   private var _locked = false
 
   private def log(msg: String) = println(s"DcsStateMachineSim $id: $msg")
 
   def dumpState(): Unit = {
-    log(s"[${state.name}] (${if (locked) "L" else "."}) ${if (state != Invalid) data.bytesToHex else ""}")
+    log(s"[${_state.name}] (${if (locked) "L" else "."}) ${if (state != Invalid) data.bytesToHex else ""}")
   }
+  def state: EciClState = _state
 
   // TODO: more accessor patterns from CPU
   /**
@@ -114,7 +115,7 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
       // prevent upgrade if is lock
       if (state < newState) waitUntil(!locked)
       body(state)
-      state = newState
+      _state = newState
       dumpState()
     }
   }

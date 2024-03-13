@@ -72,8 +72,10 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
     val roundedAddr = roundAddr(addr)
     val padFront = (addr - roundedAddr).toInt
 
-    // we forbid unaligned access for now
-    assert(padFront == 0, f"DCS does not handle sub cacheline access properly yet, $addr%#x needs to be aligned")
+    // forbid unaligned access to invalid cacheline
+    val firstCl = findCl(aliasAddress(roundedAddr))
+    assert(!(padFront != 0 && firstCl.state == EciClStates.Invalid),
+      f"DCS does not handle sub cacheline reloads properly yet, $addr%#x needs to be aligned")
 
     val totalLen = roundUp(padFront + totalBytes, ECI_CL_SIZE_BYTES).toInt
     val numCls = totalLen / ECI_CL_SIZE_BYTES
