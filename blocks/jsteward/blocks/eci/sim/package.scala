@@ -3,19 +3,15 @@ package jsteward.blocks.eci
 import spinal.core.{IntToBuilder, RangePimper}
 
 package object sim {
-  implicit class RangeRicher(r: Range) {
-    def toMask = ((1 << (r.high - r.low + 1)) - 1) << r.low
-  }
-
   implicit class BigIntRicher(i: BigInt) {
     def assignToRange(range: Range, v: BigInt): BigInt = {
-      val mask = range.toMask
-      (i & mask) | ((v & mask) << range.low)
+      val mask = range.mask
+      (i &~ mask) | ((v << range.low) & mask)
     }
 
     def apply(range: Range): BigInt = {
-      val mask = range.toMask
-      ((i & mask) >> range.low)
+      val mask = range.mask
+      (i & mask) >> range.low
     }
 
     def apply(idx: Int): Boolean = {
