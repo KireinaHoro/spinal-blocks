@@ -123,13 +123,8 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
   Seq(dcsEven, dcsOdd).zipWithIndex.foreach { case (dcs, idx) =>
     val respQueue = mutable.Queue[LclChannel => Unit]()
 
-    var stallLcl = false
-
-    StreamReadyRandomizer(dcs.cleanMaybeInvReq, clockDomain, () => !stallLcl)
+    StreamReadyRandomizer(dcs.cleanMaybeInvReq, clockDomain)
     StreamMonitor(dcs.cleanMaybeInvReq, clockDomain) { req =>
-      assert(!stallLcl)
-      stallLcl = true
-
       // verify VC numbers
       req.vc.toInt match {
         case 16 => assert(idx == 1)
@@ -167,8 +162,6 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
 
       // queue response
       respQueue += { chan =>
-        stallLcl = false
-
         chan.data.lclMrsp0to1.simGet(_.opcode) #= opcode
         chan.data.lclMrsp0to1.simGet(_.hreqId) #= hreqId
         chan.data.lclMrsp0to1.simGet(_.dmask) #= 0xf
@@ -192,7 +185,7 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
       }
     }
 
-    StreamReadyRandomizer(dcs.unlockResp, clockDomain, () => !stallLcl)
+    StreamReadyRandomizer(dcs.unlockResp, clockDomain)
     StreamMonitor(dcs.unlockResp, clockDomain) { ul =>
       // verify VC numbers
       ul.vc.toInt match {
