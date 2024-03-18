@@ -157,7 +157,7 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
    */
   private[sim] def toInvalid() = {
     transition(Invalid) {
-      case Modified => doRefill()
+      case Modified => doFlush()
       case _ =>
     }
   }
