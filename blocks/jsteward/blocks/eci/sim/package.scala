@@ -3,6 +3,12 @@ package jsteward.blocks.eci
 import spinal.core.{IntToBuilder, RangePimper}
 
 package object sim {
+  // choose element randomly from iterator
+  // https://stackoverflow.com/a/34819417/5520728
+  def choose[A](it: Iterator[A], r: util.Random): A =
+    it.zipWithIndex.reduceLeft((x, y) =>
+      if (r.nextInt(y._2 + 1) == 0) y else x)._1
+
   implicit class BigIntRicher(i: BigInt) {
     def assignToRange(range: Range, v: BigInt): BigInt = {
       val mask = range.mask

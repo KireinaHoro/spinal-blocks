@@ -11,6 +11,8 @@ import spinal.lib.sim._
 import scala.collection.mutable
 import EciCmdDefs.ECI_CL_SIZE_BYTES
 
+import scala.util.Random
+
 /**
  * Simulation master for an Enzian app using the Directory Controller Slice (DCS) interface; refer to CCKit for more
  * details.  The master mimics memory transfers from the DCS'es and keeps a internal cache-line state machine (in
@@ -18,8 +20,10 @@ import EciCmdDefs.ECI_CL_SIZE_BYTES
  * @param dcsEven DCS interface for even cachelines (in aliased addresses)
  * @param dcsOdd DCS interface for odd cachelines (in aliased addresses)
  * @param clockDomain the clock domain of ECI
+ * @param voluntaryInvProb probability of a voluntary eviction of some cacheline (picked randomly for cachelines that
+ *                         are not invalid)
  */
-case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain: ClockDomain) {
+case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain: ClockDomain, voluntaryInvProb: Double = 0.01) {
   // index is unaliased address
   val clMap = mutable.HashMap[BigInt, DcsStateMachineSim]()
   val dcsOddAxiMaster = Axi4Master(dcsOdd.axi, clockDomain, "dcsOdd")
@@ -200,6 +204,17 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
       assert(ul.data.ul.simGet(_.opcode).toInt == 2)
       log(f"UL:  addr $addr%#x (aliased $aliased%#x)")
       cl.unlock()
+    }
+  }
+
+  // voluntary invalidation from CPU
+  clockDomain.onSamplings {
+    val targets = clMap.iterator.filter(_._2.state != EciClStates.Invalid)
+    if (Random.nextDouble <= voluntaryInvProb && targets.nonEmpty) {
+      val (aliased, clState) = choose(targets, Random)
+      log(f"Voluntary invalidation: ${unaliasAddress(aliased)}%#x (aliased $aliased%#x)")
+
+      clState.invalidate()
     }
   }
 }
