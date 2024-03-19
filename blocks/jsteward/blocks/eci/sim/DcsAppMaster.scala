@@ -22,8 +22,13 @@ import scala.util.Random
  * @param clockDomain the clock domain of ECI
  * @param voluntaryInvProb probability of a voluntary eviction of some cacheline (picked randomly for cachelines that
  *                         are not invalid)
+ * @param maxVoluntaryInvsInRead maximum number of voluntary evictions that could happen in a single read operation.
+ *                               A read called from the TB triggers: read, (inv, read, )*
  */
-case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain: ClockDomain, voluntaryInvProb: Double = 0.01) {
+case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain: ClockDomain,
+                        voluntaryInvProb: Double = 0.01,
+                        maxVoluntaryInvsInRead: Int = 5,
+                        ) {
   // index is unaliased address
   val clMap = mutable.HashMap[BigInt, DcsStateMachineSim]()
   val dcsOddAxiMaster = Axi4Master(dcsOdd.axi, clockDomain, "dcsOdd")
@@ -76,17 +81,31 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
     val roundedAddr = roundAddr(addr)
     val padFront = (addr - roundedAddr).toInt
 
-    // forbid unaligned access to invalid cacheline
-    val firstCl = findCl(aliasAddress(roundedAddr))
-    assert(!(padFront != 0 && firstCl.state == EciClStates.Invalid),
-      f"DCS does not handle sub cacheline reloads properly yet, $addr%#x needs to be aligned")
-
     val totalLen = roundUp(padFront + totalBytes, ECI_CL_SIZE_BYTES).toInt
     val numCls = totalLen / ECI_CL_SIZE_BYTES
 
+    def readWithRandomInv(clOffset: BigInt): List[Byte] = {
+      val clState = findCl(aliasAddress(clOffset))
+      val firstRead = clState.read
+      val numReps = Random.nextInt(maxVoluntaryInvsInRead)
+      (0 until numReps) foreach { _ =>
+        clState.invalidate()
+        val reread = clState.read
+        assert(reread == firstRead,
+          s"""CL voluntary reload mismatch:
+             |first read: "${firstRead.bytesToHex}"
+             |reread:     "${reread.bytesToHex}"
+             |""".stripMargin)
+
+        clockDomain.waitActiveEdge(Random.nextInt(20))
+      }
+
+      firstRead
+    }
+
     (0 until numCls) foreach { idx =>
       val clOffset = roundedAddr + idx * ECI_CL_SIZE_BYTES
-      builder ++= findCl(aliasAddress(clOffset)).read
+      builder ++= readWithRandomInv(clOffset)
     }
 
     builder.result().toList.slice(padFront, padFront + totalBytes)
@@ -112,6 +131,8 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
 
     (0 until numCls) foreach { idx =>
       val clOffset = roundedAddr + idx * ECI_CL_SIZE_BYTES
+
+      // TODO: implement writebacks interleaved with voluntary downgrades
       findCl(aliasAddress(clOffset)).modify { clData =>
         idx match {
           case 0 => clData.take(padFront) ++ data.take(ECI_CL_SIZE_BYTES - padFront)
