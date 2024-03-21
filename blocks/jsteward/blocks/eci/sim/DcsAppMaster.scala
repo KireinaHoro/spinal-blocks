@@ -120,29 +120,48 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
    */
   def write(addr: BigInt, data: List[Byte]): Unit = {
     val roundedAddr = roundAddr(addr)
-    val padFront = (addr - roundedAddr).toInt
+    def writePartial(data: List[Byte], offset: BigInt): Unit = {
+      val padFront = (addr - roundedAddr + offset).toInt
 
-    // we forbid unaligned access for now
-    assert(padFront == 0, f"DCS does not handle sub cacheline access properly yet, $addr%#x needs to be aligned")
+      val totalLen = roundUp(padFront + data.length, ECI_CL_SIZE_BYTES).toInt
+      val padBack = totalLen - padFront - data.length
+      val numCls = totalLen / ECI_CL_SIZE_BYTES
 
-    val totalLen = roundUp(padFront + data.length, ECI_CL_SIZE_BYTES).toInt
-    val padBack = totalLen - padFront - data.length
-    val numCls = totalLen / ECI_CL_SIZE_BYTES
+      (0 until numCls) foreach { idx =>
+        val clOffset = roundedAddr + idx * ECI_CL_SIZE_BYTES
+        val clState = findCl(aliasAddress(clOffset))
 
-    (0 until numCls) foreach { idx =>
-      val clOffset = roundedAddr + idx * ECI_CL_SIZE_BYTES
-
-      // TODO: implement writebacks interleaved with voluntary downgrades
-      findCl(aliasAddress(clOffset)).modify { clData =>
-        idx match {
-          case 0 => clData.take(padFront) ++ data.take(ECI_CL_SIZE_BYTES - padFront)
-          case i if i == numCls - 1 => data.takeRight(ECI_CL_SIZE_BYTES - padBack) ++ clData.takeRight(padBack)
-          case _ =>
-            val start = padFront + (idx - 1) * ECI_CL_SIZE_BYTES
-            data.slice(start, start + ECI_CL_SIZE_BYTES)
+        clState.modify { clData =>
+          if (numCls == 1) {
+            clData.take(padFront) ++ data ++ clData.takeRight(padBack)
+          } else idx match {
+            case 0 => clData.take(padFront) ++ data.take(ECI_CL_SIZE_BYTES - padFront)
+            case i if i == numCls - 1 => data.takeRight(ECI_CL_SIZE_BYTES - padBack) ++ clData.takeRight(padBack)
+            case _ =>
+              val start = padFront + (idx - 1) * ECI_CL_SIZE_BYTES
+              data.slice(start, start + ECI_CL_SIZE_BYTES)
+          }
         }
+
+        clState.invalidate()
       }
     }
+
+    var start = 0
+    while (start < data.length) {
+      val sliceLen = Random.nextInt(data.length - 1) + 1
+
+      writePartial(data.slice(start, start + sliceLen), start)
+      start += sliceLen
+    }
+
+    // check if written data reflects actual write
+    val readback = read(addr, data.length)
+    assert(readback == data,
+      s"""CL write readback mismatch:
+         |written:  "${data.bytesToHex}"
+         |readback: "${readback.bytesToHex}"
+         |""".stripMargin)
   }
 
   Seq(dcsEven, dcsOdd).zipWithIndex.foreach { case (dcs, idx) =>

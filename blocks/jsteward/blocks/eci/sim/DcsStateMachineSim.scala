@@ -15,6 +15,7 @@ object EciClStates extends Enumeration {
   }
 }
 import EciClStates._
+import jsteward.blocks.eci.EciCmdDefs
 import spinal.core.sim.waitUntil
 import spinal.lib.BytesRicher
 
@@ -34,7 +35,7 @@ trait ClLoadStore {
  *                block!
  */
 class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
-  private var data: List[Byte] = List.fill(128)(0xff.toByte)
+  private var data: List[Byte] = List.fill(EciCmdDefs.ECI_CL_SIZE_BYTES)(0xff.toByte)
   private var _state: EciClState = Invalid
   private var _locked = false
 
@@ -61,7 +62,10 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
    */
   def modify(mutator: List[Byte] => List[Byte]): Unit = {
     toModified()
+    val oldData = data
     data = mutator(data)
+    assert(data.length == EciCmdDefs.ECI_CL_SIZE_BYTES)
+    log(s"data change: ${oldData.bytesToHex} -> ${data.bytesToHex}")
   }
 
   /**
