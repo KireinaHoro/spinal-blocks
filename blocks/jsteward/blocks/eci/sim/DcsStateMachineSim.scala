@@ -64,7 +64,7 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
     toModified()
     val oldData = data
     data = mutator(data)
-    assert(data.length == EciCmdDefs.ECI_CL_SIZE_BYTES)
+    assert(data.length == EciCmdDefs.ECI_CL_SIZE_BYTES, s"modify called with data length ${data.length} shorter than cacheline size")
     log(s"data change: ${oldData.bytesToHex} -> ${data.bytesToHex}")
   }
 
