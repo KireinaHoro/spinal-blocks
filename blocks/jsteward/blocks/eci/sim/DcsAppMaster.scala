@@ -253,9 +253,11 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
       val targets = clMap.iterator.filter(_._2.state != EciClStates.Invalid)
       if (Random.nextDouble <= voluntaryInvProb && targets.nonEmpty) {
         val (aliased, clState) = choose(targets, Random)
-        log(f"Voluntary invalidation: ${unaliasAddress(aliased)}%#x (aliased $aliased%#x)")
+        if (!clState.inTransition) {
+          log(f"Voluntary invalidation: ${unaliasAddress(aliased)}%#x (aliased $aliased%#x)")
 
-        clState.invalidate()
+          clState.invalidate()
+        }
       }
 
       clockDomain.waitActiveEdge()

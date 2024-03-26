@@ -38,6 +38,7 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
   private var data: List[Byte] = List.fill(EciCmdDefs.ECI_CL_SIZE_BYTES)(0xff.toByte)
   private var _state: EciClState = Invalid
   private var _locked = false
+  private var _inTransition = false
 
   private def log(msg: String) = println(s"DcsStateMachineSim $id: $msg")
 
@@ -45,6 +46,7 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
     log(s"[${_state.name}] (${if (locked) "L" else "."}) ${if (state != Invalid) data.bytesToHex else ""}")
   }
   def state: EciClState = _state
+  def inTransition: Boolean = _inTransition
 
   // TODO: more accessor patterns from CPU
   /**
@@ -114,13 +116,16 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
   private[sim] def memInProgress: Boolean = inRefill || inFlush
 
   private def transition(newState: EciClState)(body: EciClState => Unit) = {
+    assert(!inTransition)
     if (state != newState) {
+      _inTransition = true
       log(s"${state.name} -> ${newState.name}")
       // prevent upgrade if is lock
       if (state < newState) waitUntil(!locked)
       body(state)
       _state = newState
       dumpState()
+      _inTransition = false
     }
   }
 
