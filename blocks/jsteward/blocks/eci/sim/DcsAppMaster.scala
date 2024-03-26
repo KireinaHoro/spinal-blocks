@@ -119,17 +119,16 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
    *       sub-cacheline access for now
    */
   def write(addr: BigInt, data: List[Byte]): Unit = {
-    val roundedAddr = roundAddr(addr)
     def writePartial(data: List[Byte], offset: BigInt): Unit = {
-      val padFront = (addr - roundedAddr + offset).toInt
-
+      val startAddr = addr + offset
+      val roundedStartAddr = roundAddr(startAddr)
+      val padFront = (startAddr - roundedStartAddr).toInt
       val totalLen = roundUp(padFront + data.length, ECI_CL_SIZE_BYTES).toInt
       val padBack = totalLen - padFront - data.length
       val numCls = totalLen / ECI_CL_SIZE_BYTES
 
       (0 until numCls) foreach { idx =>
-        val clOffset = roundedAddr + idx * ECI_CL_SIZE_BYTES
-        val clState = findCl(aliasAddress(clOffset))
+        val clState = findCl(aliasAddress(roundedStartAddr))
 
         clState.modify { clData =>
           if (numCls == 1) {
