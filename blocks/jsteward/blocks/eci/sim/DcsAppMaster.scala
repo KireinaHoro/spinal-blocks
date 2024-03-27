@@ -17,18 +17,19 @@ import scala.util.Random
  * Simulation master for an Enzian app using the Directory Controller Slice (DCS) interface; refer to CCKit for more
  * details.  The master mimics memory transfers from the DCS'es and keeps a internal cache-line state machine (in
  * [[DcsStateMachineSim]]).
- * @param dcsEven DCS interface for even cachelines (in aliased addresses)
- * @param dcsOdd DCS interface for odd cachelines (in aliased addresses)
- * @param clockDomain the clock domain of ECI
- * @param voluntaryInvProb probability of a voluntary eviction of some cacheline (picked randomly for cachelines that
- *                         are not invalid)
+ *
+ * @param dcsEven                DCS interface for even cachelines (in aliased addresses)
+ * @param dcsOdd                 DCS interface for odd cachelines (in aliased addresses)
+ * @param clockDomain            the clock domain of ECI
+ * @param voluntaryInvProb       probability of a voluntary eviction of some cacheline (picked randomly for cachelines that
+ *                               are not invalid)
  * @param maxVoluntaryInvsInRead maximum number of voluntary evictions that could happen in a single read operation.
  *                               A read called from the TB triggers: read, (inv, read, )*
  */
 case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain: ClockDomain,
                         voluntaryInvProb: Double = 0.01,
                         maxVoluntaryInvsInRead: Int = 5,
-                        ) {
+                       ) {
   // index is unaliased address
   val clMap = mutable.HashMap[BigInt, DcsStateMachineSim]()
   val dcsOddAxiMaster = Axi4Master(dcsOdd.axi, clockDomain, "dcsOdd")
@@ -51,6 +52,7 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
         log(f"DCS load:  addr $addr%#x (aliased $aliased%#x) -> ${ret.bytesToHex}")
         ret
       }
+
       def store(d: List[Byte]): Unit = {
         log(f"DCS store: addr $addr%#x (aliased $aliased%#x) <- ${d.bytesToHex}")
         assert(d.length == ECI_CL_SIZE_BYTES, s"cache-line flush length ${d.length} does not match cacheline size ${ECI_CL_SIZE_BYTES}")
@@ -69,7 +71,8 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
 
   /**
    * Read synchronously through the two DCS interfaces, updating the internal cacheline states as it goes along.
-   * @param addr start address of read, does not have to be aligned
+   *
+   * @param addr       start address of read, does not have to be aligned
    * @param totalBytes number of bytes to read
    * @return read data truncated to the right length
    * @note FIXME the DCS doesn't actually handle sub-cacheline access properly (talk to adamt), so we forbid
@@ -85,10 +88,13 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
     val numCls = totalLen / ECI_CL_SIZE_BYTES
 
     def readWithRandomInv(clOffset: BigInt): List[Byte] = {
-      val clState = findCl(aliasAddress(clOffset))
+      val aliasedAddr = aliasAddress(clOffset)
+      val clState = findCl(aliasedAddr)
       val firstRead = clState.read
       val numReps = Random.nextInt(maxVoluntaryInvsInRead)
       (0 until numReps) foreach { _ =>
+        log(f"Voluntary invalidation DURING READ: $clOffset%#x (aliased $aliasedAddr%#x)")
+
         clState.invalidate()
         val reread = clState.read
         assert(reread == firstRead,
@@ -113,6 +119,7 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
 
   /**
    * Write synchronously through the two DCS interfaces, updating the internal cacheline states as it goes along.
+   *
    * @param addr start of address to write, does not have to be aligned
    * @param data data to write
    * @note FIXME the DCS doesn't actually handle sub-cacheline access properly (talk to adamt), so we forbid
@@ -128,7 +135,8 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
       val numCls = totalLen / ECI_CL_SIZE_BYTES
 
       (0 until numCls) foreach { idx =>
-        val clState = findCl(aliasAddress(roundedStartAddr))
+        val currCl = roundedStartAddr + idx * ECI_CL_SIZE_BYTES
+        val clState = findCl(aliasAddress(currCl))
 
         clState.modify { clData =>
           if (numCls == 1) {
@@ -137,7 +145,7 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
             case 0 => clData.take(padFront) ++ data.take(ECI_CL_SIZE_BYTES - padFront)
             case i if i == numCls - 1 => data.takeRight(ECI_CL_SIZE_BYTES - padBack) ++ clData.takeRight(padBack)
             case _ =>
-              val start = padFront + (idx - 1) * ECI_CL_SIZE_BYTES
+              val start = idx * ECI_CL_SIZE_BYTES - padFront
               data.slice(start, start + ECI_CL_SIZE_BYTES)
           }
         }
@@ -148,7 +156,9 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
 
     var start = 0
     while (start < data.length) {
-      val sliceLen = Random.nextInt(data.length - 1) + 1
+      val sliceLen = Random.nextInt(data.length) + 1
+      if (sliceLen < data.length)
+        log(s"Partial write and voluntary invalidation: start $start len $sliceLen")
 
       writePartial(data.slice(start, start + sliceLen), start)
       start += sliceLen
