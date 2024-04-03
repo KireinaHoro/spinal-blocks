@@ -80,7 +80,7 @@ class XpmMemoryDpDistRam(clockDomainA: ClockDomain,
 
   noIoPrefix()
 
-  setBlackBoxName("XPM_MEMORY_DPDISTRAM")
+  setBlackBoxName("xpm_memory_dpdistram")
 }
 
 class XpmMemorySDpRam(clockDomainA: ClockDomain,
@@ -181,7 +181,7 @@ class XpmMemorySDpRam(clockDomainA: ClockDomain,
   mapClockDomain(clockDomainB, io.clkb, io.rstb)
   noIoPrefix()
 
-  setBlackBoxName("XPM_MEMORY_SDPRAM")
+  setBlackBoxName("xpm_memory_sdpram")
 }
 
 class XpmMemorySpRam(
@@ -275,7 +275,7 @@ class XpmMemorySpRam(
 
   noIoPrefix()
 
-  setBlackBoxName("XPM_MEMORY_SPRAM")
+  setBlackBoxName("xpm_memory_spram")
 }
 
 class XpmMemoryTDpRam(
@@ -401,5 +401,5 @@ class XpmMemoryTDpRam(
 
   noIoPrefix()
 
-  setBlackBoxName("XPM_MEMORY_TDPRAM")
+  setBlackBoxName("xpm_memory_tdpram")
 }
