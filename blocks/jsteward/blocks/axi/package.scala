@@ -52,6 +52,11 @@ package object axi {
   def axisRTLFile(name: String) = getClass.getResource(s"/verilog-axis/rtl/$name.v").getPath
 
   implicit class RichAxiLite4(axil: AxiLite4) {
+    def cdc(pushClock: ClockDomain, popClock: ClockDomain) = new Composite(axil, "cdc") {
+      val c = new AxiLiteCdc(axil.config, pushClock, popClock)
+      c.io.s_axil << axil
+    }.c.io.m_axil
+
     def resize(newWidth: Int): AxiLite4 = new Composite(axil, "resized") {
       val ret = if (newWidth == axil.config.dataWidth) {
         axil
