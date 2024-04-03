@@ -101,7 +101,6 @@ class XpmMemorySDpRam(clockDomainA: ClockDomain,
                       val memoryPrimitive: String = "auto",
                       val memorySize: Int = 2048,
                       val messageControl: Boolean = false,
-                      val ramDecomp: String = "auto",
                       val readDataWidthB: Int = 32,
                       val readLatencyB: Int = 2,
                       val readResetValueB: String = "0",
@@ -119,7 +118,6 @@ class XpmMemorySDpRam(clockDomainA: ClockDomain,
   checkParam(eccType)("none", "ECCHSIAO32-7", "ECCHSIAO64-8", "ECCHSIAO128-9", "ECCH32-7", "ECCH64-8")
   checkParam(memoryOptimization)("true", "false")
   checkParam(memoryPrimitive)("auto", "block", "distributed", "mixed", "ultra")
-  checkParam(ramDecomp)("auto", "area", "power")
   checkParam(wakeUpTime)("disable_sleep", "use_sleep_pin")
   checkParam(writeModeB)("no_change", "read_first", "write_first")
 
@@ -142,7 +140,6 @@ class XpmMemorySDpRam(clockDomainA: ClockDomain,
     "MEMORY_PRIMITIVE" -> memoryPrimitive,
     "MEMORY_SIZE" -> memorySize,
     "MESSAGE_CONTROL" -> messageControl,
-    "RAM_DECOMP" -> ramDecomp,
     "READ_DATA_WIDTH_B" -> readDataWidthB,
     "READ_LATENCY_B" -> readLatencyB,
     "READ_RESET_VALUE_B" -> readResetValueB,
@@ -200,7 +197,6 @@ class XpmMemorySpRam(
                       val memoryPrimitive: String = "auto",
                       val memorySize: Int = 2048,
                       val messageControl: Boolean = false,
-                      val ramDecomp: String = "auto",
                       val readDataWidthA: Int = 32,
                       val readLatencyA: Int = 2,
                       val readResetValueA: String = "0",
@@ -218,7 +214,6 @@ class XpmMemorySpRam(
   checkParam(eccType)("none", "ECCHSIAO32-7", "ECCHSIAO64-8", "ECCHSIAO128-9", "ECCH32-7", "ECCH64-8")
   checkParam(memoryOptimization)("true", "false")
   checkParam(memoryPrimitive)("auto", "block", "distributed", "mixed", "ultra")
-  checkParam(ramDecomp)("auto", "area", "power")
   checkParam(wakeUpTime)("disable_sleep", "use_sleep_pin")
   checkParam(writeModeA)("no_change", "read_first", "write_first")
 
@@ -240,7 +235,6 @@ class XpmMemorySpRam(
     "MEMORY_PRIMITIVE" -> memoryPrimitive,
     "MEMORY_SIZE" -> memorySize,
     "MESSAGE_CONTROL" -> messageControl,
-    "RAM_DECOMP" -> ramDecomp,
     "READ_DATA_WIDTH_A" -> readDataWidthA,
     "READ_LATENCY_A" -> readLatencyA,
     "READ_RESET_VALUE_A" -> readResetValueA,
@@ -298,7 +292,6 @@ class XpmMemoryTDpRam(
                        val memoryPrimitive: String = "auto",
                        val memorySize: Int = 2048,
                        val messageControl: Boolean = false,
-                       val ramDecomp: String = "auto",
                        val readDataWidthA: Int = 32,
                        val readDataWidthB: Int = 32,
                        val readLatencyA: Int = 2,
@@ -321,7 +314,6 @@ class XpmMemoryTDpRam(
   checkParam(eccType)("none", "ECCHSIAO32-7", "ECCHSIAO64-8", "ECCHSIAO128-9", "ECCH32-7", "ECCH64-8")
   checkParam(memoryOptimization)("true", "false")
   checkParam(memoryPrimitive)("auto", "block", "distributed", "mixed", "ultra")
-  checkParam(ramDecomp)("auto", "area", "power")
   checkParam(wakeUpTime)("disable_sleep", "use_sleep_pin")
   checkParam(writeModeA)("no_change", "read_first", "write_first")
   checkParam(writeModeB)("no_change", "read_first", "write_first")
@@ -347,7 +339,6 @@ class XpmMemoryTDpRam(
     "MEMORY_PRIMITIVE" -> memoryPrimitive,
     "MEMORY_SIZE" -> memorySize,
     "MESSAGE_CONTROL" -> messageControl,
-    "RAM_DECOMP" -> ramDecomp,
     "READ_DATA_WIDTH_A" -> readDataWidthA,
     "READ_DATA_WIDTH_B" -> readDataWidthB,
     "READ_LATENCY_A" -> readLatencyA,
