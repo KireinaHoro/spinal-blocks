@@ -73,6 +73,8 @@ package object axi {
       ret.r >> axi.r
     }.ret
 
+    def cdc(pushClock: ClockDomain, popClock: ClockDomain, depth: Int = 2) = AxiCdc(axi, pushClock, popClock, depth)
+
     def resize(newWidth: Int): Axi4 = new Composite(axi, "resized") {
       val ret = if (newWidth == axi.config.dataWidth) {
         axi
