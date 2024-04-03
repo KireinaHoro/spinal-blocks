@@ -2,7 +2,12 @@ package jsteward.blocks
 
 import spinal.core._
 import spinal.lib._
+
 package object misc {
+  def checkParam[T](v: T)(candidates: T*): Unit = {
+    if (!candidates.contains(v)) SpinalError(s"parameter $v not in list of valid options $candidates")
+  }
+
   implicit class RichBundle[T <: Bundle](b: T) {
     def <<?(that: Bundle): Unit = {
       b.assignSomeByName(that)
