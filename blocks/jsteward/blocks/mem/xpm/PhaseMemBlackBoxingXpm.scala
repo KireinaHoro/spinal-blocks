@@ -153,6 +153,7 @@ class PhaseMemBlackBoxingXpm(policy: MemBlackboxingPolicy) extends PhaseMemBlack
           readDataWidthA = rw.width,
           writeDataWidthA = rw.width,
           readDataWidthB = rd.width,
+          writeDataWidthB = rd.width,
           memorySize = mem.wordCount * mem.width,
           memoryPrimitive = mapTechnology(mem),
           writeModeA = mapRUW(rd),
