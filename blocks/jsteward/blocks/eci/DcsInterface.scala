@@ -13,15 +13,24 @@ case class LclChannel() extends Bundle {
 }
 
 /** Interface with dcs_2_axi.sv (DCS with read and write data wrapped in AXI) */
-case class DcsInterface(axiConfig: Axi4Config) extends Bundle {
+case class DcsInterface(axiConfig: Axi4Config) extends Bundle with IMasterSlave {
   assert(64 to 1024 contains axiConfig.dataWidth, s"DCS desc_to_axi does not support dataWidth ${axiConfig.dataWidth}")
 
   /** read and write data AXI channel */
-  val axi = slave(Axi4(axiConfig))
+  val axi = Axi4(axiConfig)
   /** request channel for clean (LC) and clean-invalidate (LCI) */
-  val cleanMaybeInvReq = master(Stream(LclChannel()))
+  val cleanMaybeInvReq = Stream(LclChannel())
   /** response channel for clean (LCA) and clean-invalidate (LCIA) */
-  val cleanMaybeInvResp = slave(Stream(LclChannel()))
+  val cleanMaybeInvResp = Stream(LclChannel())
   /** response channel for unlock (UL) */
-  val unlockResp = master(Stream(LclChannel()))
+  val unlockResp = Stream(LclChannel())
+
+  override def asMaster(): Unit = {
+    master(axi)
+    slave(cleanMaybeInvReq)
+    master(cleanMaybeInvResp)
+    slave(unlockResp)
+  }
+
+  override def clone: DcsInterface = DcsInterface(axiConfig)
 }
