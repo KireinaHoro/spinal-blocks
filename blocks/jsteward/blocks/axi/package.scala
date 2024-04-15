@@ -69,6 +69,14 @@ package object axi {
   }
 
   implicit class RichAxi4(axi: Axi4) {
+    def fullPipe(): Axi4 = axi.pipelined(
+      aw = StreamPipe.FULL,
+      ar = StreamPipe.FULL,
+      w = StreamPipe.FULL,
+      r = StreamPipe.FULL,
+      b = StreamPipe.FULL,
+    )
+
     def remapAddr(f: UInt => UInt): Axi4 = new Composite(axi, "remapped") {
       val ret = Axi4(axi.config)
       ret.aw << axi.aw.mapPayloadElement(_.addr)(f)
