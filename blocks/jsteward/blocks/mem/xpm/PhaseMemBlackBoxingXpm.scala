@@ -115,7 +115,7 @@ class PhaseMemBlackBoxingXpm(policy: MemBlackboxingPolicy) extends PhaseMemBlack
           memoryPrimitive = mapTechnology(mem),
           writeModeB = mapRUW(rd),
           useWriteMaskA = wr.mask != null,
-          readLatencyB = 1, // `Mem.readSync` has one cycle of latency
+          readLatencyB = rd.latency, // `Mem.readSync` has one cycle of latency
         )
 
         ram.io.addrb.assignFrom(rd.address)
@@ -161,8 +161,8 @@ class PhaseMemBlackBoxingXpm(policy: MemBlackboxingPolicy) extends PhaseMemBlack
           writeModeA = mapRUW(rd),
           writeModeB = mapRUW(rw),
           useWriteMaskA = rw.mask != null,
-          readLatencyA = 1, // `Mem.readSync` has one cycle of latency
-          readLatencyB = 1, // `Mem.readSync` has one cycle of latency
+          readLatencyA = rw.latency, // `Mem.readSync` has one cycle of latency
+          readLatencyB = rd.latency, // `Mem.readSync` has one cycle of latency
         )
 
         ram.io.addra.assignFrom(rw.address)

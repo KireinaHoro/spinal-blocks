@@ -28,6 +28,7 @@ package object xpm {
     def clockDomain(wrDomain: ClockDomain): ClockDomain
     def getAddressWidth: Int
     def width: Int
+    def latency: Int
     def address: Expression
     def readEnable: Expression
     def readUnderWrite: ReadUnderWritePolicy
@@ -38,10 +39,10 @@ package object xpm {
     def clockDomain(wrDomain: ClockDomain): ClockDomain = rs.clockDomain
     def getAddressWidth: Int = rs.getAddressWidth
     def width: Int = rs.width
+    def latency = 1
     def address: Expression = rs.address
     def readEnable: Expression = rs.readEnable
     def readUnderWrite: ReadUnderWritePolicy = rs.readUnderWrite
-
     def toExpression: Expression = rs
   }
 
@@ -49,6 +50,7 @@ package object xpm {
     def clockDomain(wrDomain: ClockDomain): ClockDomain = wrDomain
     def getAddressWidth: Int = ra.getAddressWidth
     def width: Int = ra.width
+    def latency = 0
     def address: Expression = ra.address
     def readEnable: Expression = True
     def readUnderWrite: ReadUnderWritePolicy = ra.readUnderWrite
@@ -59,6 +61,7 @@ package object xpm {
     def clockDomain(wrDomain: ClockDomain): ClockDomain = rw.clockDomain
     def getAddressWidth: Int = rw.getAddressWidth
     def width: Int = rw.width
+    def latency = 1
     def address: Expression = rw.address
     def readEnable: Expression = True
     def readUnderWrite: ReadUnderWritePolicy = rw.readUnderWrite
