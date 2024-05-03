@@ -18,8 +18,8 @@ import scala.util.Random
  * details.  The master mimics memory transfers from the DCS'es and keeps a internal cache-line state machine (in
  * [[DcsStateMachineSim]]).
  *
- * @param dcsEven                DCS interface for even cachelines (in aliased addresses)
- * @param dcsOdd                 DCS interface for odd cachelines (in aliased addresses)
+ * @param dcsEven                DCS interface for odd cachelines (in aliased addresses; odd means the VC NUMBER is odd)
+ * @param dcsOdd                 DCS interface for even cachelines (in aliased addresses; even means the VC NUMBER is even)
  * @param clockDomain            the clock domain of ECI
  * @param voluntaryInvProb       probability of a voluntary eviction of some cacheline (picked randomly for cachelines that
  *                               are not invalid)
@@ -44,7 +44,8 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
     assert(addr % ECI_CL_SIZE_BYTES == 0, "address for cacheline not aligned")
 
     val aliased = aliasAddress(addr)
-    val dcs = if (aliased(7)) dcsOddAxiMaster else dcsEvenAxiMaster
+    // odd dcs for even cacheline!
+    val dcs = if (aliased(7)) dcsEvenAxiMaster else dcsOddAxiMaster
 
     new ClLoadStore {
       def load: List[Byte] = {
@@ -178,13 +179,16 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
 
     StreamReadyRandomizer(dcs.cleanMaybeInvReq, clockDomain)
     StreamMonitor(dcs.cleanMaybeInvReq, clockDomain) { req =>
-      // verify VC numbers
+      // verify VC numbers odd/even
       req.vc.toInt match {
-        case 16 => assert(idx == 1)
-        case 17 => assert(idx == 0)
+        case 16 => assert(idx == 0)
+        case 17 => assert(idx == 1)
       }
 
       val aliased = req.data.lclMfwdGeneric.simGet(_.address).toBigInt
+      // verify odd/even address: odd DCS should have even addresses
+      assert(aliased(7) == (idx == 0), f"DCS even/odd mismatch: got aliased address $aliased%#x but DCS index is $idx")
+
       val addr = unaliasAddress(aliased)
       val cl = findCl(aliased)
 
@@ -222,7 +226,7 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
         chan.data.lclMrsp0to1.simGet(_.address) #= aliased
         chan.data.lclMrsp0to1.commit()
         chan.size #= 1
-        chan.vc #= (if (idx == 0) 19 else 18)
+        chan.vc #= (if (idx == 0) 18 else 19)
 
         opcode match {
           case 0 => log(f"LCA:  ID $hreqId addr $addr%#x (aliased $aliased%#x)")
@@ -242,11 +246,14 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
     StreamMonitor(dcs.unlockResp, clockDomain) { ul =>
       // verify VC numbers
       ul.vc.toInt match {
-        case 18 => assert(idx == 1)
-        case 19 => assert(idx == 0)
+        case 18 => assert(idx == 0)
+        case 19 => assert(idx == 1)
       }
 
       val aliased = ul.data.ul.simGet(_.address).toBigInt
+      // verify odd/even address: odd DCS should have even addresses
+      assert(aliased(7) == (idx == 0), f"DCS even/odd mismatch: got aliased address $aliased%#x but DCS index is $idx")
+
       val addr = unaliasAddress(aliased)
       val cl = findCl(aliased)
 
