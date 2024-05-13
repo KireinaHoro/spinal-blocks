@@ -195,15 +195,6 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
       val addr = unaliasAddress(aliased)
       val cl = findCl(aliased)
 
-      // deadlock detection: LC/LCI should not be sent when reload is blocked
-      // refer to CCKit Figure 7.4
-      // FIXME: there's more cases to disallow
-      // FIXME: this also disallows when the reload does not depend on LCA/LCIA
-      if (cl.memInProgress) {
-        log(s"!!! potential deadlock/race condition !!! lc/lci sent for ${cl.id} during cacheline reload")
-        clockDomain.waitActiveEdgeWhere(!cl.memInProgress)
-      }
-
       val dmask = req.data.lclMfwdGeneric.simGet(_.dmask).toInt
       assert(dmask == 0xf, f"dmask != 0xf: $dmask%#x")
       assert(req.data.lclMfwdGeneric.simGet(_.ns).toBoolean)
@@ -212,6 +203,15 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
       // process state change
       val opcode = req.data.lclMfwdGeneric.simGet(_.opcode).toInt
       val hreqId = req.data.lclMfwdGeneric.simGet(_.hreqId).toInt
+
+      // deadlock detection: LC/LCI should not be sent when reload is blocked
+      // refer to CCKit Figure 7.4
+      // FIXME: there's more cases to disallow
+      // FIXME: this also disallows when the reload does not depend on LCA/LCIA
+      if (cl.memInProgress) {
+        log(s"!!! potential deadlock/race condition !!! lc/lci sent for ${cl.id} during cacheline reload")
+        clockDomain.waitActiveEdgeWhere(!cl.memInProgress)
+      }
 
       opcode match {
         case 0 => // LC
