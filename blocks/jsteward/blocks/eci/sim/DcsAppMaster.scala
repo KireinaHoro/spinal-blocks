@@ -10,6 +10,7 @@ import spinal.lib.sim._
 
 import scala.collection.mutable
 import EciCmdDefs.ECI_CL_SIZE_BYTES
+import jsteward.blocks.misc.sim.StreamMonitorThreadful
 
 import scala.util.Random
 
@@ -27,7 +28,9 @@ import scala.util.Random
  *                               A read called from the TB triggers: read, (inv, read, )*
  */
 case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain: ClockDomain,
-                        voluntaryInvProb: Double = 0.01,
+                        var voluntaryInvProb: Double = 0.01,
+                        var doPartialWrite: Boolean = true,
+                        var doReadbackCheck: Boolean = false,
                         maxVoluntaryInvsInRead: Int = 5,
                        ) {
   // index is unaliased address
@@ -92,7 +95,7 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
       val aliasedAddr = aliasAddress(clOffset)
       val clState = findCl(aliasedAddr)
       val firstRead = clState.read
-      val numReps = Random.nextInt(maxVoluntaryInvsInRead)
+      val numReps = if (voluntaryInvProb < Double.MinPositiveValue) 0 else Random.nextInt(maxVoluntaryInvsInRead)
       (0 until numReps) foreach { _ =>
         log(f"Voluntary invalidation DURING READ: $clOffset%#x (aliased $aliasedAddr%#x)")
 
@@ -150,14 +153,12 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
               data.slice(start, start + ECI_CL_SIZE_BYTES)
           }
         }
-
-        clState.invalidate()
       }
     }
 
     var start = 0
     while (start < data.length) {
-      val sliceLen = Random.nextInt(data.length) + 1
+      val sliceLen = if (doPartialWrite) Random.nextInt(data.length) + 1 else data.length
       if (sliceLen < data.length)
         log(s"Partial write and voluntary invalidation: start $start len $sliceLen")
 
@@ -165,20 +166,22 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
       start += sliceLen
     }
 
-    // check if written data reflects actual write
-    val readback = read(addr, data.length)
-    assert(readback == data,
-      s"""CL write readback mismatch:
-         |written:  "${data.bytesToHex}"
-         |readback: "${readback.bytesToHex}"
-         |""".stripMargin)
+    if (doReadbackCheck) {
+      // check if written data reflects actual write
+      val readback = read(addr, data.length)
+      assert(readback == data,
+        f"""CL $addr%#x write readback mismatch:
+           |written:  "${data.bytesToHex}"
+           |readback: "${readback.bytesToHex}"
+           |""".stripMargin)
+    }
   }
 
   Seq(dcsEven, dcsOdd).zipWithIndex.foreach { case (dcs, idx) =>
     val respQueue = mutable.Queue[LclChannel => Unit]()
 
     StreamReadyRandomizer(dcs.cleanMaybeInvReq, clockDomain)
-    StreamMonitor(dcs.cleanMaybeInvReq, clockDomain) { req =>
+    StreamMonitorThreadful(dcs.cleanMaybeInvReq, clockDomain) { req =>
       // verify VC numbers odd/even
       req.vc.toInt match {
         case 16 => assert(idx == 0)
@@ -243,7 +246,7 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
     }
 
     StreamReadyRandomizer(dcs.unlockResp, clockDomain)
-    StreamMonitor(dcs.unlockResp, clockDomain) { ul =>
+    StreamMonitorThreadful(dcs.unlockResp, clockDomain) { ul =>
       // verify VC numbers
       ul.vc.toInt match {
         case 18 => assert(idx == 0)

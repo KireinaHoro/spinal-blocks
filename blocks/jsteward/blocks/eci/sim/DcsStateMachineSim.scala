@@ -94,7 +94,7 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
    * @group dcs
    */
   private[sim] def unlock(): Unit = {
-    assert(locked)
+    assert(locked, s"trying to unlock $id that's not locked")
     _locked = false
     log("unlocked")
   }
@@ -116,7 +116,7 @@ class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
   private[sim] def memInProgress: Boolean = inRefill || inFlush
 
   private def transition(newState: EciClState)(body: EciClState => Unit) = {
-    assert(!inTransition)
+    assert(!inTransition, s"$id already in transition!")
     if (state != newState) {
       _inTransition = true
       log(s"${state.name} -> ${newState.name}")
