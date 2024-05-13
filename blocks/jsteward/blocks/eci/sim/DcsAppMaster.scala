@@ -68,7 +68,7 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
   // operates on aliased address!
   def findCl(addr: BigInt): DcsStateMachineSim = {
     val unaliased = unaliasAddress(addr)
-    clMap.getOrElseUpdate(addr, new DcsStateMachineSim(f"CL $unaliased%#x", genLoadStore(unaliased)))
+    clMap.getOrElseUpdate(addr, DcsStateMachineSim(f"CL $unaliased%#x", genLoadStore(unaliased)))
   }
 
   def roundAddr(addr: BigInt): BigInt = addr - (addr & (ECI_CL_SIZE_BYTES - 1))
@@ -199,7 +199,10 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
       // refer to CCKit Figure 7.4
       // FIXME: there's more cases to disallow
       // FIXME: this also disallows when the reload does not depend on LCA/LCIA
-      assert(!cl.memInProgress, "potential deadlock/race condition: lc/lci sent during cacheline reload")
+      if (cl.memInProgress) {
+        log(s"!!! potential deadlock/race condition !!! lc/lci sent for ${cl.id} during cacheline reload")
+        clockDomain.waitActiveEdgeWhere(!cl.memInProgress)
+      }
 
       val dmask = req.data.lclMfwdGeneric.simGet(_.dmask).toInt
       assert(dmask == 0xf, f"dmask != 0xf: $dmask%#x")

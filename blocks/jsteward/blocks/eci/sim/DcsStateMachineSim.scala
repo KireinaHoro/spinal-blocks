@@ -34,7 +34,7 @@ trait ClLoadStore {
  * @groupname dcs APIs for [[DcsAppMaster]].  These will be called from a callback of StreamMonitor so we should not
  *                block!
  */
-class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
+case class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
   private var data: List[Byte] = List.fill(EciCmdDefs.ECI_CL_SIZE_BYTES)(0xff.toByte)
   private var _state: EciClState = Invalid
   private var _locked = false
