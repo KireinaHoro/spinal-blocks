@@ -22,9 +22,15 @@ class StreamMonitorThreadful[T <: Data](stream: Stream[T], clockDomain: ClockDom
 
   fork {
     while (true) {
-      clockDomain.waitActiveEdgeWhere(validProxy.toBoolean && readyProxy.toBoolean && clockDomain.isSamplingEnable)
+      clockDomain.waitActiveEdge()
 
-      callbacks.foreach(_(stream.payload))
+      fork {
+        // for every clock cycle, launch a thread to check for fire condition
+        // callback could take multiple clock cycles to finish; execute them in a separate thread
+        if (validProxy.toBoolean && readyProxy.toBoolean && clockDomain.isSamplingEnable) {
+          callbacks.foreach(_(stream.payload))
+        }
+      }
     }
   }
 }
