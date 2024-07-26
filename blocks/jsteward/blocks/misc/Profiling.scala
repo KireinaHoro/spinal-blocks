@@ -36,18 +36,14 @@ case class Profiler(keys: NamedType[UInt]*)(collectTimestamps: Boolean, parent: 
     }
   }
 
-  def fillSlot(ts: Timestamps, key: NamedType[UInt], cond: Bool, register: Boolean = true)(implicit clock: CycleClock): Timestamps = {
+  def fillSlot(ts: Timestamps, key: NamedType[UInt], cond: Bool)(implicit clock: CycleClock): Timestamps = {
     assert(keys.contains(key), s"key ${key.getName} not found in the profiler")
+    assert(ts.isReg, s"timestamps ${ts} not registered!")
 
-    if (register) {
-      val capture = RegNextWhen(clock.bits, cond) init 0
-      ts(key) := capture.resized
-    } else {
-      when(cond) {
-        ts(key) := clock.bits.resized
-      } otherwise {
-        ts(key) := 0
-      }
+    when(cond) {
+      ts(key) := clock.bits.resized
+    } otherwise {
+      ts(key) := 0
     }
 
     ts
