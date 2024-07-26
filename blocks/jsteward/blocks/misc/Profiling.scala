@@ -36,12 +36,6 @@ case class Profiler(keys: NamedType[UInt]*)(collectTimestamps: Boolean, parent: 
     }
   }
 
-  def augment(axisConfig: Axi4StreamConfig): Axi4StreamConfig = {
-    if (collectTimestamps)
-      axisConfig.copy(useUser = true, userWidth = timestamps.getBitsWidth)
-    else axisConfig
-  }
-
   def fillSlot(ts: Timestamps, key: NamedType[UInt], cond: Bool, register: Boolean = true)(implicit clock: CycleClock): Timestamps = {
     assert(keys.contains(key), s"key ${key.getName} not found in the profiler")
 
@@ -85,21 +79,5 @@ case class Profiler(keys: NamedType[UInt]*)(collectTimestamps: Boolean, parent: 
     parent.keys foreach { pk =>
       downstream(pk) := stage(pk)
     }
-  }
-
-  /** Inject timestamp bundle into a AXI-Stream.  If the stream is already timestamped, add the new timestamp to the map */
-  def timestamp(axis: Axi4Stream, key: NamedType[UInt], base: Timestamps = timestamps.fromBits(0, allowResize = true))(implicit clock: CycleClock): Axi4Stream = {
-    if (!collectTimestamps) return axis
-
-    // FIXME: we assume that the USER field of the stream is only used to carry timestamps
-    val ret = Axi4Stream(this augment axis.config)
-
-    ret << axis
-    ret.user.allowOverride()
-    ret.user := fillSlot(
-      if (axis.config.useUser) timestamps.fromBits(axis.user) else base,
-      key, axis.lastFire,
-      register = false).asBits
-    ret
   }
 }
