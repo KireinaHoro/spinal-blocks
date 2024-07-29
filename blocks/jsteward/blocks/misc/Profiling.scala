@@ -26,54 +26,29 @@ case class Timestamps(keys: Seq[NamedType[UInt]]) extends HardMap {
   }
 }
 
-case class Profiler(keys: NamedType[UInt]*)(collectTimestamps: Boolean, parent: Profiler = null) {
-  val allKeys = (if (parent != null) parent.keys else Nil) ++ keys
-  val timestamps = Timestamps(allKeys)
+case class Profiler(keys: NamedType[UInt]*)(collectTimestamps: Boolean) extends Area {
+  val timestamps = Reg(Timestamps(keys))
 
   def regInit(ts: Timestamps) = {
-    allKeys foreach { key =>
+    keys foreach { key =>
       ts(key) init 0
     }
   }
 
-  def fillSlot(ts: Timestamps, key: NamedType[UInt], cond: Bool)(implicit clock: CycleClock): Timestamps = {
+  def fillSlot(key: NamedType[UInt], cond: Bool)(implicit clock: CycleClock) = {
     assert(keys.contains(key), s"key ${key.getName} not found in the profiler")
-    assert(ts.isReg, s"timestamps ${ts} not registered!")
 
     when(cond) {
-      ts(key) := clock.bits.resized
-    } otherwise {
-      ts(key) := 0
+      timestamps(key) := clock.bits.resized
     }
-
-    ts
   }
 
   /** Fill multiple slots */
-  def fillSlots(ts: Timestamps, keycond: (NamedType[UInt], Bool)*)(implicit clock: CycleClock): Timestamps = {
-    if (!collectTimestamps) {
-      return ts
-    }
-
-    keycond foreach { case (key, cond) =>
-      fillSlot(ts, key, cond)
-    }
-
-    ts
-  }
-
-  /** Collect existing timestamps from parent profiler */
-  def collectInto(upstream: Bits, downstream: Timestamps): Unit = {
-    if (!collectTimestamps) {
-      downstream.assignDontCare()
-      return
-    }
-
-    // collect parent keys
-    assert(upstream.getWidth == parent.timestamps.getBitsWidth, s"upstream timestamp bits does not match with upstream profiler")
-    val stage = parent.timestamps.fromBits(upstream)
-    parent.keys foreach { pk =>
-      downstream(pk) := stage(pk)
+  def fillSlots(keycond: (NamedType[UInt], Bool)*)(implicit clock: CycleClock) = {
+    if (collectTimestamps) {
+      keycond foreach { case (key, cond) =>
+        fillSlot(key, cond)
+      }
     }
   }
 }
