@@ -6,6 +6,7 @@ import org.scalatest.funsuite.FixtureAnyFunSuite
 import spinal.core._
 import spinal.core.sim._
 import spinal.sim._
+import spinal.lib._
 
 import java.io.{FileOutputStream, PrintStream}
 import java.util.zip.GZIPOutputStream
@@ -92,4 +93,10 @@ abstract class DutSimFunSuite[T <: Component] extends FixtureAnyFunSuite with Be
   def sleepCycles(n: Int)(implicit dut: T) = dut.clockDomain.waitActiveEdge(n)
 
   def dut: SimCompiled[T]
+
+  def check(expected: List[Byte], got: List[Byte]) = assert(expected == got,
+    s"""data mismatch:
+       |expected: "${expected.bytesToHex}"
+       |got:      "${got.bytesToHex}"
+       |""".stripMargin)
 }
