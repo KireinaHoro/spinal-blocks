@@ -55,7 +55,7 @@ trait BlocksTester extends ScalaModule with CrossScalaModule {
     millSourcePath / "tests"
   )
   override def scalacOptions = super.scalacOptions() ++ spinalPluginOptions()
-  override def moduleDeps = super.moduleDeps ++ spinalDeps
+  override def moduleDeps = super.moduleDeps ++ spinalDeps ++ Agg(blocks(crossScalaVersion))
   override def ivyDeps = Agg(
     ivy"com.lihaoyi::os-lib:0.9.3",
   )
