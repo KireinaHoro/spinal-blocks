@@ -37,8 +37,6 @@ class AxiStreamExtractHeaderTests extends DutSimFunSuite[AxiStreamExtractHeader]
     (packetIn, packetOut)
   }
 
-  // val sampleEthernetPayload = hexToBytesBE("4500004c7d1c400064119b827f0000017f000001d8bdd5550038fe4b66a6af460000000000000002234511110000000100000001000000000000000000000000000000000000007b0000002d")
-
   def testEthernetHeader(randomizeKeep: Boolean, iterations: Int, dut: AxiStreamExtractHeader) = {
     val hdrsExpected = mutable.Queue[List[Byte]]()
     val payloadsReceived = mutable.Queue[List[Byte]]()
@@ -79,6 +77,34 @@ class AxiStreamExtractHeaderTests extends DutSimFunSuite[AxiStreamExtractHeader]
     testEthernetHeader(randomizeKeep = true, 50, dut)
   }
 
-  test("early termination") { dut =>
+  test("abnormal packets") { implicit dut =>
+    val headerOnly = hexToBytesBE("abcdef1234560102030405060800")
+    val incompleteHeader = hexToBytesBE("112233445566aabbccdd") // 4B short
+
+    var headerReceived = false
+    val (packetIn, packetOut) = setup(dut, { hdr =>
+      // we should only receive the second one
+      assert(!headerReceived, "received more than one header!")
+
+      check(headerOnly, hdr.toBytes.toList)
+      headerReceived = true
+    }, true)
+
+    fork {
+      while (true) {
+        val payload = packetOut.recv()
+        assert(payload.isEmpty, "should not receive data on the stream")
+      }
+    }
+
+    packetIn.send(incompleteHeader)
+    sleepCycles(50)
+    assert(dut.io.statistics.incompleteHeader.toBigInt == 1, "incomplete header counter did not increase")
+    assert(dut.io.statistics.headerOnly.toBigInt == 0, "header only counter increased")
+
+    packetIn.send(headerOnly)
+    sleepCycles(50)
+    assert(dut.io.statistics.incompleteHeader.toBigInt == 1, "incomplete header changed")
+    assert(dut.io.statistics.headerOnly.toBigInt == 1, "header only counter did not increase")
   }
 }

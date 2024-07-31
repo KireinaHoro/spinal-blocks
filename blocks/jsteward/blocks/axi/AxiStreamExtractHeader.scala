@@ -13,7 +13,13 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int) 
     val input = slave(Axi4Stream(axisConfig))
     val output = master(Axi4Stream(axisConfig))
     val header = master(Stream(Bits(outputLen * 8 bits)))
+    val statistics = out(new Bundle {
+      val headerOnly = UInt(64 bits)
+      val incompleteHeader = UInt(64 bits)
+    }).setAsReg()
   }
+
+  io.statistics.flatten.foreach(_ init U(0))
 
   val beatCaptured = Reg(io.output.payload)
   val headerCaptured = Reg(io.header.payload)
@@ -75,8 +81,11 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int) 
       when (beatCaptured.keep === 0) {
         // beat is depleted but header not complete yet, need new one
         fsm.goto(fsm.captureBeat)
-        // TODO: check if TLAST asserted -- unexpected end of packet
-        //       report error in CSR
+        when (beatCaptured.last) {
+          // unexpected end of packet -- drop header
+          io.statistics.incompleteHeader := io.statistics.incompleteHeader + 1
+          fsm.goto(fsm.idle)
+        }
       }
     }
   } setName "consumeSegment"
@@ -118,7 +127,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int) 
           when (beatCaptured.last) {
             when (beatCaptured.keep === 0) {
               // keep == 0 AND last beat: we got a header only packet
-              // TODO: report to CSR
+              io.statistics.headerOnly := io.statistics.headerOnly + 1
             }
             goto(idle)
           } otherwise {
