@@ -47,7 +47,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int) 
 
       dataMask := ((U(1) << (consumeLen * 8)) - 1).asBits.resized
       keepMask := ((U(1) << consumeLen) - 1).asBits.resized
-      beatSlice := ((beatCaptured.data >> segmentOffset) & dataMask).resized
+      beatSlice := ((beatCaptured.data >> (segmentOffset * 8)) & dataMask).resized
       // mask off segment we just consumed
       beatCaptured.keep := beatCaptured.keep & ~(keepMask << segmentOffset).resize(axisConfig.dataWidth)
     }
@@ -59,7 +59,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int) 
     }
 
     // store partial header
-    headerCaptured := headerCaptured | (beatSlice << (outputLen - headerRemaining)).resized
+    headerCaptured := headerCaptured | (beatSlice << ((outputLen - headerRemaining) * 8)).resized
     headerRemaining := headerRemaining - consumeLen
 
     // when we got the entire header AND there are still segments left in the beat:
@@ -74,7 +74,6 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int) 
     } otherwise {
       when (beatCaptured.keep === 0) {
         // beat is depleted but header not complete yet, need new one
-        io.input.ready := True
         fsm.goto(fsm.captureBeat)
         // TODO: check if TLAST asserted -- unexpected end of packet
         //       report error in CSR
@@ -98,6 +97,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int) 
     }
     val captureBeat: State = new State {
       whenIsActive {
+        io.input.ready := True
         when (io.input.valid) {
           beatCaptured := io.input.payload
           goto(writeHeader)
