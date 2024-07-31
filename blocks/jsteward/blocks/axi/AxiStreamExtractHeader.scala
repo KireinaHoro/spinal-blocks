@@ -110,24 +110,21 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int) 
       }
     }
     val writeEarlyBody: State = new State {
-      def checkLastExit = when (beatCaptured.last) {
-          // keep == 0 AND last beat: we got a header only packet
-          // TODO: report to CSR
-          goto(idle)
-        } otherwise {
-          // not last beat: more to follow
-          goto(writeBody)
-        }
       whenIsActive {
-        when (beatCaptured.keep =/= 0) {
-          // beat still has remaining segments, pass through
-          io.output.valid := True
-          io.output.payload := beatCaptured
-          when (io.output.ready) {
-            checkLastExit
+        // we allow an empty beat (TKEEP == 0) to simplify state transition logic
+        io.output.valid := True
+        io.output.payload := beatCaptured
+        when (io.output.ready) {
+          when (beatCaptured.last) {
+            when (beatCaptured.keep === 0) {
+              // keep == 0 AND last beat: we got a header only packet
+              // TODO: report to CSR
+            }
+            goto(idle)
+          } otherwise {
+            // not last beat: more to follow
+            goto(writeBody)
           }
-        } otherwise {
-          checkLastExit
         }
       }
     }
