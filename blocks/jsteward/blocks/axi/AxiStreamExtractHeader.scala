@@ -8,6 +8,7 @@ import spinal.lib.fsm._
 
 // extract the first outputLen bytes from Axi4Stream
 // output stream without header
+// TODO: make outputLen variable to handle e.g. IPv4 options
 case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int) extends Component {
   val io = new Bundle {
     val input = slave(Axi4Stream(axisConfig))
