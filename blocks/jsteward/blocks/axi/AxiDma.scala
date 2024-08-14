@@ -29,7 +29,7 @@ case class AxiDmaWriteDescStatus(dmaConfig: AxiDmaConfig) extends Bundle {
   import dmaConfig._
 
   val len = UInt(lenWidth bits)
-  val tag = UInt(tagWidth bits)
+  val tag = Bits(tagWidth bits)
   val id = UInt(intfAxisConfig.idWidth bits)
   val dest = UInt(intfAxisConfig.destWidth bits)
   val user = UInt(intfAxisConfig.userWidth bits)
