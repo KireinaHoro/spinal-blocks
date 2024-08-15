@@ -13,14 +13,14 @@ case class AxiDmaCmd(dmaConfig: AxiDmaConfig) extends Bundle {
 
   val addr = UInt(axiConfig.addressWidth bits)
   val len = UInt(lenWidth bits)
-  val tag = UInt(tagWidth bits)
+  val tag = Bits(tagWidth bits)
 }
 
 case class AxiDmaReadDescStatus(dmaConfig: AxiDmaConfig) extends Bundle {
 
   import dmaConfig._
 
-  val tag = UInt(tagWidth bits)
+  val tag = Bits(tagWidth bits)
   val error = Bits(4 bits)
 }
 
