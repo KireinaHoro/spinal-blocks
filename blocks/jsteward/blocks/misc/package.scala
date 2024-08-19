@@ -37,4 +37,34 @@ package object misc {
       }
     }
   }
+
+  object StreamDispatcherWithEnable {
+    def apply[T <: Data](
+                          input: Stream[T],
+                          outputCount: Int,
+                          enableMask: Bits,
+                          maskChanged: Bool
+                        ): Vec[Stream[T]] = new ImplicitArea[Vec[Stream[T]]] {
+      // FIXME: same as OHMasking.roundRobin?
+      assert(
+        outputCount == enableMask.getWidth,
+        "enable mask bit width does not match with output count"
+      )
+      val select = Reg(UInt(log2Up(outputCount) bits))
+
+      // reset select when mask changes
+      // FIXME: can this happen when a request is ongoing?
+      when(maskChanged) {
+        select := CountTrailingZeroes(enableMask).resized
+      }
+
+      val doubleMask = enableMask ## enableMask
+      val shiftedMask = doubleMask >> (select + 1)
+      val inc = CountTrailingZeroes(shiftedMask.resize(outputCount)) + 1
+      when(input.fire) {
+        select := select + inc.resized
+      }
+      val implicitValue = StreamDemux(input, select, outputCount)
+    }.setCompositeName(input, "streamDispatch", true)
+  }
 }

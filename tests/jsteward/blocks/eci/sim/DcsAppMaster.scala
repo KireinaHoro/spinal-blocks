@@ -1,17 +1,14 @@
 package jsteward.blocks.eci.sim
 
-import jsteward.blocks.eci.{DcsInterface, EciCmdDefs, LclChannel}
-import jsteward.blocks.eci.sim.BigIntRicher
-import spinal.core.{ClockDomain, IntToBuilder, roundUp}
+import jsteward.blocks.eci.EciCmdDefs.ECI_CL_SIZE_BYTES
+import jsteward.blocks.eci._
 import spinal.core.sim._
+import spinal.core.{ClockDomain, roundUp}
 import spinal.lib._
 import spinal.lib.bus.amba4.axi.sim.Axi4Master
 import spinal.lib.sim._
 
 import scala.collection.mutable
-import EciCmdDefs.ECI_CL_SIZE_BYTES
-import jsteward.blocks.misc.sim.StreamMonitorThreadful
-
 import scala.util.Random
 
 /**

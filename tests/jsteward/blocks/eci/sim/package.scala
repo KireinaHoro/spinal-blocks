@@ -1,30 +1,9 @@
 package jsteward.blocks.eci
 
-import spinal.core.{IntToBuilder, RangePimper}
+import jsteward.blocks.misc.sim.BigIntRicher
+import spinal.core.IntToBuilder
 
 package object sim {
-  // choose element randomly from iterator
-  // https://stackoverflow.com/a/34819417/5520728
-  def choose[A](it: Iterator[A], r: util.Random): A =
-    it.zipWithIndex.reduceLeft((x, y) =>
-      if (r.nextInt(y._2 + 1) == 0) y else x)._1
-
-  implicit class BigIntRicher(i: BigInt) {
-    def assignToRange(range: Range, v: BigInt): BigInt = {
-      val mask = range.mask
-      (i &~ mask) | ((v << range.low) & mask)
-    }
-
-    def apply(range: Range): BigInt = {
-      val mask = range.mask
-      (i & mask) >> range.low
-    }
-
-    def apply(idx: Int): Boolean = {
-      (i & (1 << idx)) != 0
-    }
-  }
-
   def aliasCachelineIndex(cli: BigInt): BigInt = {
     BigInt(0)
       .assignToRange(32 downto 13, cli(32 downto 13))

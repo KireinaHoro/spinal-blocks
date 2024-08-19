@@ -9,6 +9,7 @@ import spinal.lib.fsm._
 // extract the first outputLen bytes from Axi4Stream
 // output stream without header
 // TODO: make outputLen variable to handle e.g. IPv4 options
+// TODO: allow emitting partial header?
 case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int) extends Component {
   val io = new Bundle {
     val input = slave(Axi4Stream(axisConfig))
@@ -34,7 +35,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int) 
   io.header.setIdle()
   io.header.assertPersistence()
 
-  val outputLenWidth = log2Up(outputLen)
+  val outputLenWidth = log2Up(outputLen) + 1
   val segmentLenWidth = log2Up(axisConfig.dataWidth) + 1
   val headerRemaining = Reg(UInt(outputLenWidth bits)) init outputLen
   val beatSlice = CombInit(B(0, outputLen * 8 bits))

@@ -14,8 +14,8 @@ object EciClStates extends Enumeration {
     }
   }
 }
-import EciClStates._
 import jsteward.blocks.eci.EciCmdDefs
+import jsteward.blocks.eci.sim.EciClStates._
 import spinal.core.sim.waitUntil
 import spinal.lib.BytesRicher
 
