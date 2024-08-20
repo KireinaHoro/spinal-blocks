@@ -2,9 +2,10 @@ package jsteward.blocks.eci.sim
 
 import jsteward.blocks.eci.EciCmdDefs.ECI_CL_SIZE_BYTES
 import jsteward.blocks.eci._
+import jsteward.blocks.misc.sim._
 import spinal.core.sim._
 import spinal.core.{ClockDomain, roundUp}
-import spinal.lib._
+import spinal.lib.{BigIntRicher => _, _}
 import spinal.lib.bus.amba4.axi.sim.Axi4Master
 import spinal.lib.sim._
 
