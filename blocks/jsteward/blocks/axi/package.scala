@@ -143,15 +143,15 @@ package object axi {
       val ret = monitor.io.frame_len
     }.ret
 
-    def throwFrameWhen(cond: Bool) = new Composite(axis, "throwFrameWhen") {
+    def throwFrameWhen(cond: Flow[Bool]) = new Composite(axis, "throwFrameWhen") {
       val dropper = AxiStreamDropFrame(axis.config)
       dropper.io.input << axis
-      dropper.io.drop := cond
+      dropper.io.drop << cond
 
       val ret = dropper.io.output
     }.ret
 
-    def takeFrameWhen(cond: Bool) = throwFrameWhen(!cond)
+    def takeFrameWhen(cond: Flow[Bool]) = throwFrameWhen(cond.map(!_))
   }
 
   implicit class RichAxi4StreamCustom[T <: Data](axis: Axi4StreamCustom[T]) {

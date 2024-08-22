@@ -8,14 +8,14 @@ case class AxiStreamDropFrame(axisConfig: Axi4StreamConfig) extends Component {
   val io = new Bundle {
     val input = slave(Axi4Stream(axisConfig))
     val output = master(Axi4Stream(axisConfig))
-    val drop = in Bool()
+    val drop = slave Flow(Bool())
   }
 
   assert(axisConfig.useLast, "must enable TLAST or we don't know packet boundary")
 
-  val doDrop = Reg(Bool()) init false
-  doDrop.setWhen(io.drop)
-  doDrop.clearWhen(io.input.lastFire)
+  val doDrop = Reg(Bool()) init False
+  doDrop.setWhen(io.drop.valid && io.drop.payload)
+  doDrop.clearWhen(io.input.lastFire || (io.drop.valid && !io.drop.payload))
 
   io.output << io.input.throwWhen(doDrop)
 }
