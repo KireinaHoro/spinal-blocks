@@ -1,5 +1,6 @@
 package jsteward.blocks.axi
 
+import jsteward.blocks.misc.DriveMissing
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba4.axis.{Axi4Stream, Axi4StreamConfig}
@@ -32,14 +33,10 @@ case class AxiStreamTap(
   val io = new Bundle {
     val clk = in Bool()
     val rst = in Bool()
-
-    val tap_axis = in(Axi4Stream(intfAxisConfig))
-    val m_axis = master(Axi4Stream(intfAxisConfig))
   }
 
-  lazy val tapPort = Axi4Stream(axisConfig)
-  io.tap_axis.assignSomeByName(tapPort)
-  lazy val masterPort = io.m_axis.toSpinal(axisConfig)
+  val tap_axis = new DriveMissing(Axi4Stream(axisConfig), in(Axi4Stream(intfAxisConfig)))
+  val m_axis = new DriveMissing(Axi4Stream(axisConfig), master(Axi4Stream(intfAxisConfig)))
 
   mapCurrentClockDomain(io.clk, io.rst)
   noIoPrefix()

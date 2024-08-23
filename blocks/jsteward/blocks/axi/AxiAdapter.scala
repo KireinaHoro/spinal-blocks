@@ -1,5 +1,6 @@
 package jsteward.blocks.axi
 
+import jsteward.blocks.misc.DriveMissing
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba4.axi._
@@ -42,13 +43,10 @@ class AxiAdapter(inConfig: Axi4Config, outDataWidth: Int, convertBurst: Boolean 
   val io = new Bundle {
     val clk = in Bool()
     val rst = in Bool()
-
-    val s_axi = slave(Axi4(intfConfig))
-    val m_axi = master(Axi4(intfConfig.copy(dataWidth = outDataWidth)))
   }
 
-  lazy val slavePort = io.s_axi.toSpinal(inConfig)
-  lazy val masterPort = io.m_axi.toSpinal(inConfig.copy(dataWidth = outDataWidth))
+  val s_axi = new DriveMissing(Axi4(inConfig), slave(Axi4(intfConfig)))
+  val m_axi = new DriveMissing(Axi4(inConfig.copy(dataWidth = outDataWidth)), master(Axi4(intfConfig.copy(dataWidth = outDataWidth))))
 
   mapCurrentClockDomain(io.clk, io.rst)
   noIoPrefix()

@@ -1,5 +1,6 @@
 package jsteward.blocks.axi
 
+import jsteward.blocks.misc.{DriveMissing, DriveMissingVec}
 import spinal.core._
 import spinal.lib.bus.amba4.axis.{Axi4Stream, Axi4StreamConfig}
 import spinal.lib.io.InOutVecToBits
@@ -40,14 +41,10 @@ class AxiStreamArbMux(
   val io = new Bundle {
     val clk = in Bool()
     val rst = in Bool()
-
-    val m_axis = master(Axi4Stream(masterIntfAxisConfig))
   }
 
-  val s_axis = new InOutVecToBits(slave(Axi4Stream(intfAxisConfig)), numSlavePorts)
-
-  lazy val slavePorts = Seq.tabulate(numSlavePorts)(s_axis(_).toSpinal(axisConfig))
-  lazy val masterPort = io.m_axis.toSpinal(masterAxisConfig)
+  val s_axis = new DriveMissingVec(Axi4Stream(axisConfig), slave(Axi4Stream(intfAxisConfig)), numSlavePorts)
+  val m_axis = new DriveMissing(Axi4Stream(masterAxisConfig), master(Axi4Stream(masterIntfAxisConfig)))
 
   mapCurrentClockDomain(io.clk, io.rst)
   noIoPrefix()

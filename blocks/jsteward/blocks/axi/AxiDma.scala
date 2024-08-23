@@ -1,5 +1,6 @@
 package jsteward.blocks.axi
 
+import jsteward.blocks.misc.DriveMissing
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba4.axi._
@@ -94,7 +95,8 @@ class AxiDma(dmaConfig: AxiDmaConfig,
   val modName = "axi_dma"
   setBlackBoxName(modName)
 
-  val trimmedAxiConfig = axiConfig.copy(useQos = false, useRegion = false)
+  assert(!axiConfig.useQos, "axi dma does not support qos")
+  assert(!axiConfig.useRegion, "axi dma does not support region")
 
   val io = new Bundle {
     val clk = in Bool()
@@ -102,21 +104,18 @@ class AxiDma(dmaConfig: AxiDmaConfig,
 
     val s_axis_read_desc = slave(dmaConfig.readDescBus)
     val m_axis_read_desc_status = master(dmaConfig.readDescStatusBus)
-    val m_axis_read_data = master(Axi4Stream(dmaConfig.intfAxisConfig))
 
     val s_axis_write_desc = slave(dmaConfig.writeDescBus)
     val m_axis_write_desc_status = master(dmaConfig.writeDescStatusBus)
-    val s_axis_write_data = slave(Axi4Stream(dmaConfig.intfAxisConfig))
 
-    val m_axi = master(Axi4(trimmedAxiConfig))
+    val m_axi = master(Axi4(axiConfig))
 
     val read_enable = in Bool()
     val write_enable = in Bool()
     val write_abort = in Bool()
   }
-
-  lazy val readDataMaster = io.m_axis_read_data.toSpinal(axisConfig)
-  lazy val writeDataSlave = io.s_axis_write_data.toSpinal(axisConfig)
+  val m_axis_read_data = new DriveMissing(Axi4Stream(dmaConfig.axisConfig), master(Axi4Stream(dmaConfig.intfAxisConfig)))
+  val s_axis_write_data = new DriveMissing(Axi4Stream(dmaConfig.axisConfig), slave(Axi4Stream(dmaConfig.intfAxisConfig)))
 
   mapCurrentClockDomain(io.clk, io.rst)
 

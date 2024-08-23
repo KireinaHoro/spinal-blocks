@@ -93,22 +93,8 @@ package object axi {
         axi
       } else {
         val adapter = new AxiAdapter(axi.config, newWidth) setCompositeName (axi, "adapter")
-        axi >> adapter.slavePort
-        adapter.masterPort
-      }
-    }.ret
-
-    def toSpinal(config: Axi4Config): Axi4 = new Composite(axi, "toSpinal") {
-      val ret = Axi4(config)
-      val masterChannels: Seq[Axi4 => lib.Stream[_ <: Bundle]] = Seq(_.ar, _.aw, _.w)
-      val slaveChannels: Seq[Axi4 => lib.Stream[_ <: Bundle]] = Seq(_.r, _.b)
-      val driverChannels = if (axi.isMasterInterface) masterChannels else slaveChannels
-      val loadChannels = if (axi.isMasterInterface) slaveChannels else masterChannels
-      driverChannels.foreach { c =>
-        c(ret).translateFrom(c(axi))(_ <<? _)
-      }
-      loadChannels.foreach { c =>
-        c(axi).translateFrom(c(ret))(_ <<? _)
+        axi >> adapter.s_axi
+        adapter.m_axi.accesses
       }
     }.ret
   }
@@ -127,15 +113,6 @@ package object axi {
     )
 
   implicit class RichAxi4Stream(axis: Axi4Stream) {
-    def toSpinal(config: Axi4StreamConfig): Axi4Stream = new Composite(axis, "toSpinal") {
-      val ret = Axi4Stream(config)
-      if (axis.isMasterInterface) {
-        ret.translateFrom(axis)(_ <<? _)
-      } else {
-        axis.translateFrom(ret)(_ <<? _)
-      }
-    }.ret
-
     def frameLength: Flow[UInt] = new Composite(axis, "frameLength") {
       val clockDomain = axis.getTag(classOf[ClockDomainTag]).map(_.clockDomain).getOrElse(ClockDomain.current)
       val monitor = clockDomain(AxiStreamFrameLen(axis.config))
@@ -152,16 +129,5 @@ package object axi {
     }.ret
 
     def takeFrameWhen(cond: Flow[Bool]) = throwFrameWhen(cond.map(!_))
-  }
-
-  implicit class RichAxi4StreamCustom[T <: Data](axis: Axi4StreamCustom[T]) {
-    def toSpinal(config: Axi4StreamCustomConfig[T]): Axi4StreamCustom[T] = new Composite(axis, "toSpinal") {
-      val ret = Axi4StreamCustom(config)
-      if (axis.isMasterInterface) {
-        ret.translateFrom(axis)(_ <<? _)
-      } else {
-        axis.translateFrom(ret)(_ <<? _)
-      }
-    }.ret
   }
 }

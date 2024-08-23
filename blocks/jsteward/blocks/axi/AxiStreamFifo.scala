@@ -1,5 +1,6 @@
 package jsteward.blocks.axi
 
+import jsteward.blocks.misc.DriveMissing
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba4.axis.{Axi4Stream, Axi4StreamConfig}
@@ -58,17 +59,13 @@ case class AxiStreamFifo(
     val clk = in Bool()
     val rst = in Bool()
 
-    val s_axis = slave(Axi4Stream(intfAxisConfig))
-    val m_axis = master(Axi4Stream(intfAxisConfig))
-
     val pause = new FifoPause
 
     val status = out(new FifoStatus(depthWords))
   }
 
-  // TODO: reimplement as rework to generate proper access points like in `InOutVecToBits`
-  lazy val slavePort = io.s_axis.toSpinal(axisConfig)
-  lazy val masterPort = io.m_axis.toSpinal(axisConfig)
+  val s_axis = new DriveMissing(Axi4Stream(axisConfig), slave(Axi4Stream(intfAxisConfig)))
+  val m_axis = new DriveMissing(Axi4Stream(axisConfig), master(Axi4Stream(intfAxisConfig)))
 
   mapCurrentClockDomain(io.clk, io.rst)
   noIoPrefix()

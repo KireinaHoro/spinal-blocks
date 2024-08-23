@@ -1,5 +1,6 @@
 package jsteward.blocks.axi
 
+import jsteward.blocks.misc._
 import spinal.core._
 import spinal.lib.bus.amba4.axis._
 import spinal.lib._
@@ -60,11 +61,9 @@ case class AxiStreamAsyncFifo(
   val io = new Bundle {
     val s_clk = in Bool()
     val s_rst = in Bool()
-    val s_axis = slave(Axi4Stream(intfAxisConfig))
 
     val m_clk = in Bool()
     val m_rst = in Bool()
-    val m_axis = master(Axi4Stream(intfAxisConfig))
 
     val s_pause = new FifoPause
     val m_pause = new FifoPause
@@ -73,17 +72,16 @@ case class AxiStreamAsyncFifo(
     val m_status = out(new FifoStatus(depthWords))
   }
 
-  // TODO: reimplement as rework to generate proper access points like in `InOutVecToBits`
-  lazy val slavePort = io.s_axis.toSpinal(axisConfig) addTag ClockDomainTag(clockSlave)
-  lazy val masterPort = io.m_axis.toSpinal(axisConfig) addTag ClockDomainTag(clockMaster)
+  val s_axis = new DriveMissing(Axi4Stream(axisConfig), slave(Axi4Stream(intfAxisConfig)))
+  val m_axis = new DriveMissing(Axi4Stream(axisConfig), master(Axi4Stream(intfAxisConfig)))
 
   mapClockDomain(clockSlave, io.s_clk, io.s_rst)
-  Seq(io.s_axis, io.s_pause, io.s_status) foreach { bus =>
+  Seq(s_axis.get, io.s_pause, io.s_status) foreach { bus =>
     bus.addTag(ClockDomainTag(clockSlave))
   }
 
   mapClockDomain(clockMaster, io.m_clk, io.m_rst)
-  Seq(io.m_axis, io.m_pause, io.m_status) foreach { bus =>
+  Seq(m_axis.get, io.m_pause, io.m_status) foreach { bus =>
     bus.addTag(ClockDomainTag(clockMaster))
   }
 
@@ -131,10 +129,10 @@ case class SimpleAsyncFifo[T <: Data](payloadType: HardType[T],
   val slavePort = slave(Stream(payloadType))
   val masterPort = master(Stream(payloadType))
 
-  slavePort.translateInto(fifo.slavePort) { case (fp, mp) =>
+  slavePort.translateInto(fifo.s_axis) { case (fp, mp) =>
     fp.data := mp.asBits.resized
   }
-  masterPort.translateFrom(fifo.masterPort) { case (mp, fp) =>
+  masterPort.translateFrom(fifo.m_axis) { case (mp, fp) =>
     mp.assignFromBits(fp.data.resized)
   }
 }
