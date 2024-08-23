@@ -14,7 +14,7 @@ import scala.collection.mutable
  * @param count number of replications
  * @tparam T SpinalHDL data type
  */
-class DriveMissingVec[T <: MultiData](dataType: => T, expected: => T, count: Int, driveMethod: BaseType => Unit = _.assignDontCare()) extends Area with collection.IndexedSeq[T] {
+class DriveMissingVec[T <: MultiData](dataType: => T, expected: => T, count: Int, driveMethod: DriveMethod = AssignDontCare) extends Area with collection.IndexedSeq[T] {
   def apply(i: Int) = accesses(i)
   def length = accesses.length
 
@@ -50,7 +50,7 @@ class DriveMissingVec[T <: MultiData](dataType: => T, expected: => T, count: Int
         val ab = accessKeys(sliceId).find(_._2 == kn).map(_._1)
         (key.getDirection, ab) match {
           case (`in`, Some(a)) => e := a.asBits
-          case (`in`, None) => driveMethod(e)
+          case (`in`, None) => driveMethod.drive(e, accesses(sliceId))
           case (`out`, Some(a)) => a.assignFromBits(e)
           case _ =>
         }

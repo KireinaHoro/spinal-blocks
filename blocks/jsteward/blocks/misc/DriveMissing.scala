@@ -2,6 +2,24 @@ package jsteward.blocks.misc
 
 import spinal.core._
 
+/** Specify how to drive a disabled signal in [[DriveMissing]] and [[DriveMissingVec]] */
+sealed trait DriveMethod {
+  def drive(e: BaseType, b: MultiData): Unit = {
+    this match {
+      case AssignDontCare => e.assignDontCare()
+      case AssignZero => e := U(0)
+      case TieToMember(f: (MultiData => BaseType)) => e := f(b)
+    }
+  }
+}
+case object AssignDontCare extends DriveMethod
+case object AssignZero extends DriveMethod
+/**
+ * Tie to a specific member in the parent bundle.  Be careful: if T does not match the actual type of the parent,
+ * a [[ClassCastException]] will be raised.
+ */
+case class TieToMember[T <: MultiData](func: T => BaseType) extends DriveMethod
+
 /**
  * Used to drive inpout ports of blackboxes that are missing in SpinalHDL.  Some blackboxes disable
  * specific ports (e.g. TLAST in AXI-Stream) but the port still exists in RTL.  This tool avoids leaving
@@ -12,7 +30,7 @@ import spinal.core._
  * @param driveMethod how to drive the missing input port; defaults to assignDontCare
  * @tparam T SpinalHDL data type
  */
-class DriveMissing[T <: MultiData](dataType: => T, expected: => T, driveMethod: BaseType => Unit = _.assignDontCare()) extends Area {
+class DriveMissing[T <: MultiData](dataType: => T, expected: => T, driveMethod: DriveMethod = AssignDontCare) extends Area {
   def get: T = accesses
 
   val accesses = Component.current.parent.rework {
@@ -29,7 +47,7 @@ class DriveMissing[T <: MultiData](dataType: => T, expected: => T, driveMethod: 
             case `in` => e := a
             case `out` => a := e
           }
-        case _ if e.isInput => driveMethod(e)
+        case _ if e.isInput => driveMethod.drive(e, accesses)
         case _ =>
       }
     }
