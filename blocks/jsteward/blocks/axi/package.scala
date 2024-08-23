@@ -36,13 +36,17 @@ package object axi {
     }
   }
 
-  def renameAxi4StreamIO(c: Component = Component.current, alwaysAddT: Boolean = false): Unit = {
+  def renameAxi4StreamIO(c: Component = Component.current, alwaysAddT: Boolean = false, allCaps: Boolean = false): Unit = {
     c.getAllIo.foreach { bt =>
       val pattern = "^((?:s|m|mon)_axis.*?)(?:payload_)*([^_]+)$".r
       for (pm <- pattern.findFirstMatchIn(bt.getName)) {
         val busName = pm.group(1)
-        val signalName = if (busName.endsWith("data_") || alwaysAddT) s"t${pm.group(2)}" else pm.group(2)
-        bt.setName(busName + signalName)
+        val fieldName = if (busName.endsWith("data_") || alwaysAddT) s"t${pm.group(2)}" else pm.group(2)
+        val signalName = busName + fieldName match {
+          case v if allCaps => v.toUpperCase
+          case v => v
+        }
+        bt.setName(signalName)
       }
     }
   }
@@ -50,6 +54,8 @@ package object axi {
   def axiRTLFile(name: String) = getClass.getResource(s"/verilog-axi/rtl/$name.v").getPath
 
   def axisRTLFile(name: String) = getClass.getResource(s"/verilog-axis/rtl/$name.v").getPath
+
+  def zipCpuRTLFile(name: String) = getClass.getResource(s"/wb2axip/rtl/$name.v").getPath
 
   implicit class RichAxiLite4(axil: AxiLite4) {
     def cdc(pushClock: ClockDomain, popClock: ClockDomain) = new Composite(axil, "cdc") {
