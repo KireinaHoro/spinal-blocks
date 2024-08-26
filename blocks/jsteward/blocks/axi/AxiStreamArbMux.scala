@@ -3,14 +3,13 @@ package jsteward.blocks.axi
 import jsteward.blocks.misc.{DriveMissing, DriveMissingVec}
 import spinal.core._
 import spinal.lib.bus.amba4.axis.{Axi4Stream, Axi4StreamConfig}
-import spinal.lib.io.InOutVecToBits
 import spinal.lib._
 
 class AxiStreamArbMux(
                      axisConfig: Axi4StreamConfig,
                      numSlavePorts: Int = 4,
                      updateTid: Boolean = false,
-                     arbRoundRobin: Boolean = true,
+                     arbRoundRobin: Boolean = false,
                      arbLsbHighPriority: Boolean = true,
                      ) extends BlackBox {
   assert(clockDomain.config.resetKind == SYNC, "verilog-axi requires")
