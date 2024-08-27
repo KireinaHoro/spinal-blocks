@@ -1,6 +1,7 @@
 package jsteward.blocks.misc
 
 import spinal.core.RangePimper
+import spinal.lib.{IntRicher, LiteralRicher, LongRicher}
 
 package object sim {
   implicit class BigIntRicher(i: BigInt) {
@@ -30,4 +31,7 @@ package object sim {
     case _ :: Nil => true
     case x :: xs => ord.lteq(x, xs.head) && isSorted(xs: _*)
   }
+
+  def hexToBytesBE(bytes: String): List[Byte] = bytes.grouped(2).map(Integer.parseInt(_, 16).toByte).toList
+  def intToBytesBE[T](a: T, len: Int = 4)(implicit tr: T => LiteralRicher): List[Byte] = a.toBigInt.toByteArray.reverse.padTo(len, 0.toByte).reverse.toList
 }

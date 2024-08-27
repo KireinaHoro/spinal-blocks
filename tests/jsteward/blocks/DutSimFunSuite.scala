@@ -35,9 +35,13 @@ abstract class DutSimFunSuite[T <: Component] extends FixtureAnyFunSuite with Be
 
   type FixtureParam = T
 
-  override def withFixture(test: OneArgTest) = {
+  def workspace(name: String) = {
     val sc = dut.simConfig
-    val testWorkspace = os.pwd / os.RelPath(sc._workspacePath) / sc._workspaceName / test.name
+    os.pwd / os.RelPath(sc._workspacePath) / sc._workspaceName / name
+  }
+
+  override def withFixture(test: OneArgTest) = {
+    val testWorkspace = workspace(test.name)
     os.makeDir.all(testWorkspace)
 
     val lseed = simSeed.getOrElse(Random.nextInt)

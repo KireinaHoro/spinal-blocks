@@ -1,6 +1,7 @@
 package jsteward.blocks.axi
 
-import jsteward.blocks.{DutSimFunSuite, hexToBytesBE}
+import jsteward.blocks.misc.sim.hexToBytesBE
+import jsteward.blocks.DutSimFunSuite
 import spinal.core._
 import spinal.core.sim._
 import spinal.lib.bus.amba4.axis._
