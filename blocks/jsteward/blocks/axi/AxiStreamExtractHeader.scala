@@ -6,11 +6,16 @@ import spinal.lib.bus.amba4.axis.Axi4Stream.Axi4StreamBundle
 import spinal.lib.bus.amba4.axis._
 import spinal.lib.fsm._
 
-// extract the first outputLen bytes from Axi4Stream
-// output stream without header
-// TODO: make outputLen variable to handle e.g. IPv4 options
-// TODO: allow emitting partial header?
-case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int) extends Component {
+/**
+ * Extract (up to) the first [[outputLen]] bytes from an [[Axi4Stream]]; these bytes will be stripped from the output
+ * stream.  Emits NULL bytes but also consumes them properly.  This module is intended to be chained.
+ * To enable partial header output, set [[allowPartial]].
+ *
+ * @param axisConfig AXI-Stream config for input and output
+ * @param outputLen maximum length of header bytes
+ * @param allowPartial when the stream is shorter than [[outputLen]], whether to output a partially filled header
+ */
+case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int, allowPartial: Boolean = false) extends Component {
   val io = new Bundle {
     val input = slave(Axi4Stream(axisConfig))
     val output = master(Axi4Stream(axisConfig))
@@ -44,54 +49,6 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int) 
   val dataMask = if (axisConfig.useKeep) CombInit(B(0, axisConfig.dataWidth * 8 bits)) else null
   val keepMask = if (axisConfig.useKeep) CombInit(B(0, axisConfig.dataWidth bits)) else null
 
-  def consumeSegment: Unit = new Area {
-    if (!axisConfig.useKeep) {
-      segmentOffset := 0
-      segmentLen := axisConfig.dataWidth
-      beatSlice := beatCaptured.data
-    } else {
-      segmentOffset := CountTrailingZeroes(beatCaptured.keep).resized // no AXIS beat should have TKEEP all low
-      segmentLen := CountTrailingZeroes(~(beatCaptured.keep >> segmentOffset)).resize(segmentLenWidth)
-
-      dataMask := ((U(1) << (consumeLen * 8)) - 1).asBits.resized
-      keepMask := ((U(1) << consumeLen) - 1).asBits.resized
-      beatSlice := ((beatCaptured.data >> (segmentOffset * 8)) & dataMask).resized
-      // mask off segment we just consumed
-      beatCaptured.keep := beatCaptured.keep & ~(keepMask << segmentOffset).resize(axisConfig.dataWidth)
-    }
-
-    when (headerRemaining <= segmentLen) {
-      consumeLen := headerRemaining
-    } otherwise {
-      consumeLen := segmentLen.resized
-    }
-
-    // store partial header
-    headerCaptured := headerCaptured | (beatSlice << ((outputLen - headerRemaining) * 8)).resized
-    headerRemaining := headerRemaining - consumeLen
-
-    // when we got the entire header AND there are still segments left in the beat:
-    // pass through beat with TKEEP cleared for the bytes consumed
-    // (we don't pass through a beat with all zero TKEEP)
-    when (headerRemaining === 0) {
-      io.header.valid := True
-      io.header.payload := headerCaptured
-      when (io.header.ready) {
-        fsm.goto(fsm.writeEarlyBody)
-      }
-    } otherwise {
-      when (beatCaptured.keep === 0) {
-        // beat is depleted but header not complete yet, need new one
-        fsm.goto(fsm.captureBeat)
-        when (beatCaptured.last) {
-          // unexpected end of packet -- drop header
-          io.statistics.incompleteHeader.increment()
-          fsm.goto(fsm.idle)
-        }
-      }
-    }
-  } setName "consumeSegment"
-
   val fsm = new StateMachine {
     val idle: State = new State with EntryPoint {
       whenIsActive {
@@ -117,7 +74,52 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int) 
     }
     val writeHeader: State = new State {
       whenIsActive {
-        consumeSegment
+        !axisConfig.useKeep generate {
+          segmentOffset := 0
+          segmentLen := axisConfig.dataWidth
+          beatSlice := beatCaptured.data
+        }
+        axisConfig.useKeep generate {
+          segmentOffset := CountTrailingZeroes(beatCaptured.keep).resized // no AXIS beat should have TKEEP all low
+          segmentLen := CountTrailingZeroes(~(beatCaptured.keep >> segmentOffset)).resize(segmentLenWidth)
+
+          dataMask := ((U(1) << (consumeLen * 8)) - 1).asBits.resized
+          keepMask := ((U(1) << consumeLen) - 1).asBits.resized
+          beatSlice := ((beatCaptured.data >> (segmentOffset * 8)) & dataMask).resized
+          // mask off segment we just consumed
+          beatCaptured.keep := beatCaptured.keep & ~(keepMask << segmentOffset).resize(axisConfig.dataWidth)
+        }
+
+        when (headerRemaining <= segmentLen) {
+          consumeLen := headerRemaining
+        } otherwise {
+          consumeLen := segmentLen.resized
+        }
+
+        // store partial header
+        headerCaptured := headerCaptured | (beatSlice << ((outputLen - headerRemaining) * 8)).resized
+        headerRemaining := headerRemaining - consumeLen
+
+        // when we got the entire header AND there are still segments left in the beat:
+        // pass through beat with TKEEP cleared for the bytes consumed
+        // (we don't pass through a beat with all zero TKEEP)
+        when (headerRemaining === 0) {
+          io.header.valid := True
+          io.header.payload := headerCaptured
+          when (io.header.ready) {
+            goto(writeEarlyBody)
+          }
+        } otherwise {
+          when (beatCaptured.keep === 0) {
+            // beat is depleted but header not complete yet, need new one
+            goto(captureBeat)
+            when (beatCaptured.last) {
+              // unexpected end of packet -- drop header
+              io.statistics.incompleteHeader.increment()
+              goto(idle)
+            }
+          }
+        }
       }
     }
     val writeEarlyBody: State = new State {
