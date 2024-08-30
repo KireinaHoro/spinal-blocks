@@ -1,9 +1,9 @@
 package jsteward.blocks.axi
 
 class AxiStreamExtractHeaderAllowPartialTests extends AxiStreamExtractHeaderTestsCommonSetup {
-  def dutGen = AxiStreamExtractHeader(axisConfig, headerBytes, allowPartial = true)
+  def dutGen = AxiStreamExtractHeader(axisConfig, headerBytes)(headerBytes - 4)
 
   test("partial headers") { dut =>
-    testAbnormalPackets(dut, expectHeader = true)
+    testAbnormalPackets(dut, minHeaderLen = headerBytes - 4)
   }
 }

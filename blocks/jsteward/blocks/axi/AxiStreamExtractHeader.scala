@@ -7,22 +7,25 @@ import spinal.lib.bus.amba4.axis._
 import spinal.lib.fsm._
 
 /**
- * Extract (up to) the first [[outputLen]] bytes from an [[Axi4Stream]]; these bytes will be stripped from the output
+ * Extract (up to) the first [[maxHeaderLen]] bytes from an [[Axi4Stream]]; these bytes will be stripped from the output
  * stream.  Emits NULL bytes but also consumes them properly.  This module is intended to be chained.
- * To enable partial header output, set [[allowPartial]].
+ * To enable partial header output, set [[minHeaderLen]] smaller than [[maxHeaderLen]].
  *
- * @param axisConfig AXI-Stream config for input and output
- * @param outputLen maximum length of header bytes
- * @param allowPartial when the stream is shorter than [[outputLen]], whether to output a partially filled header
+ * @param axisConfig   AXI-Stream config for input and output
+ * @param maxHeaderLen maximum length of header, in bytes
+ * @param minHeaderLen minimum length of header, in bytes; default to [[maxHeaderLen]] (no partial headers)
  */
-case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int, allowPartial: Boolean = false) extends Component {
+case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: Int)(minHeaderLen: Int = maxHeaderLen) extends Component {
+  assert(minHeaderLen <= maxHeaderLen, s"minimum header length $minHeaderLen bigger than maximum header length $maxHeaderLen")
+
   val io = new Bundle {
     val input = slave(Axi4Stream(axisConfig))
     val output = master(Axi4Stream(axisConfig))
-    val header = master(Stream(Bits(outputLen * 8 bits)))
+    val header = master(Stream(Bits(maxHeaderLen * 8 bits)))
     val statistics = out(new Bundle {
-      val headerOnly = Reg(UInt(64 bits)) init 0
-      val incompleteHeader = Reg(UInt(64 bits)) init 0
+      val headerOnly = Reg(UInt(64 bits))
+      val partialHeader = Reg(UInt(64 bits))
+      val incompleteHeader = Reg(UInt(64 bits))
     })
   }
 
@@ -37,18 +40,18 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int, 
 
   assert(!axisConfig.useStrb, "TSTRB not supported")
   assert(axisConfig.useLast, "must enable TLAST or we don't know packet boundary")
-  assert(axisConfig.useKeep || outputLen % axisConfig.dataWidth == 0, "either enable TKEEP, or the header should be a multiple of TDATA")
+  assert(axisConfig.useKeep || maxHeaderLen % axisConfig.dataWidth == 0, "either enable TKEEP, or the header should be a multiple of TDATA")
 
   io.input.setBlocked()
   io.output.setIdle()
   io.header.setIdle()
   io.header.assertPersistence()
 
-  val outputLenWidth = log2Up(outputLen) + 1
+  val headerLenWidth = log2Up(maxHeaderLen) + 1
   val segmentLenWidth = log2Up(axisConfig.dataWidth) + 1
-  val headerRemaining = Reg(UInt(outputLenWidth bits)) init outputLen
-  val beatSlice = CombInit(B(0, outputLen * 8 bits))
-  val consumeLen = CombInit(U(0, outputLenWidth bits))
+  val headerRemaining = Reg(UInt(headerLenWidth bits)) init maxHeaderLen
+  val beatSlice = CombInit(B(0, maxHeaderLen * 8 bits))
+  val consumeLen = CombInit(U(0, headerLenWidth bits))
   val segmentLen, segmentOffset = CombInit(U(0, segmentLenWidth bits))
   val dataMask = if (axisConfig.useKeep) CombInit(B(0, axisConfig.dataWidth * 8 bits)) else null
   val keepMask = if (axisConfig.useKeep) CombInit(B(0, axisConfig.dataWidth bits)) else null
@@ -60,7 +63,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int, 
         io.output.setIdle()
         io.header.setIdle()
         headerCaptured.clearAll()
-        headerRemaining := outputLen
+        headerRemaining := maxHeaderLen
         when (io.input.valid) {
           beatCaptured := io.input.payload
           goto(writeHeader)
@@ -101,7 +104,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int, 
         }
 
         // store partial header
-        headerCaptured := headerCaptured | (beatSlice << ((outputLen - headerRemaining) * 8)).resized
+        headerCaptured := headerCaptured | (beatSlice << ((maxHeaderLen - headerRemaining) * 8)).resized
         headerRemaining := headerRemaining - consumeLen
 
         // write header
@@ -114,21 +117,20 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int, 
         }
 
         when (headerRemaining === 0) {
-          // got the entire header and a captured beat;
+          // got the required header and a captured beat;
           // beat might have TKEEP all zero but that's fine
           emitHeader(writeEarlyBody)
         } otherwise {
           when (beatCaptured.keep === 0) {
             // beat is depleted but header not complete yet, need new one
             when (beatCaptured.last) {
-              // unexpected end of packet
-              allowPartial generate {
-                // allowed -- emit partial header
-                when (io.header.fire) { inc(_.incompleteHeader) }
+              // header not completely filled
+              when (headerRemaining <= maxHeaderLen - minHeaderLen) {
+                // minimum header achieved -- emit partial header
+                when (io.header.fire) { inc(_.partialHeader) }
                 emitHeader(idle)
-              }
-              !allowPartial generate {
-                // not allowed -- drop header
+              } otherwise {
+                // minimum header not achieved -- drop header
                 inc(_.incompleteHeader)
                 goto(idle)
               }

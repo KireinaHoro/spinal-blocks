@@ -38,7 +38,7 @@ trait AxiStreamExtractHeaderTestsCommonSetup extends DutSimFunSuite[AxiStreamExt
     (packetIn, packetOut)
   }
 
-  def testAbnormalPackets(dut: AxiStreamExtractHeader, expectHeader: Boolean) = {
+  def testAbnormalPackets(dut: AxiStreamExtractHeader, minHeaderLen: Int) = {
     implicit val d = dut
     val checkHdrQueue = mutable.Queue[List[Byte]]()
     val checkDataQueue = mutable.Queue[List[Byte]]()
@@ -62,21 +62,25 @@ trait AxiStreamExtractHeaderTestsCommonSetup extends DutSimFunSuite[AxiStreamExt
       }
     }
 
-    var incompleteCounter, headerOnlyCounter = 0
+    var incompleteCounter, partialCounter, headerOnlyCounter = 0
 
     def iteration = {
       val toSend = Random.nextBytes(Random.between(4, headerBytes + 4)).toList
+      val l = toSend.length
       val hdr = toSend.take(headerBytes).padTo(headerBytes, 0.toByte)
 
-      if (expectHeader || toSend.length >= headerBytes) checkHdrQueue.enqueue(hdr)
-      if (toSend.length > headerBytes) checkDataQueue.enqueue(toSend.drop(headerBytes))
-      if (toSend.length < headerBytes) incompleteCounter += 1
-      if (toSend.length == headerBytes) headerOnlyCounter += 1
+      if (l >= minHeaderLen) checkHdrQueue.enqueue(hdr)
+      if (l > headerBytes) checkDataQueue.enqueue(toSend.drop(headerBytes))
+
+      if (l == headerBytes) headerOnlyCounter += 1
+      else if (l < headerBytes && l >= minHeaderLen) partialCounter += 1
+      else if (l < minHeaderLen) incompleteCounter += 1
 
       packetIn.send(toSend)
       sleepCycles(50)
 
       assert(dut.io.statistics.incompleteHeader.toBigInt == incompleteCounter)
+      assert(dut.io.statistics.partialHeader.toBigInt == partialCounter)
       assert(dut.io.statistics.headerOnly.toBigInt == headerOnlyCounter)
     }
 
@@ -87,7 +91,7 @@ trait AxiStreamExtractHeaderTestsCommonSetup extends DutSimFunSuite[AxiStreamExt
 // test for Ethernet header on 64B datapaths
 // TODO: also test for longer headers on narrower datapaths
 class AxiStreamExtractHeaderTests extends AxiStreamExtractHeaderTestsCommonSetup {
-  def dutGen = AxiStreamExtractHeader(axisConfig, headerBytes)
+  def dutGen = AxiStreamExtractHeader(axisConfig, headerBytes)()
 
   def testEthernetHeader(randomizeKeep: Boolean, iterations: Int, dut: AxiStreamExtractHeader) = {
     val hdrsExpected = mutable.Queue[List[Byte]]()
@@ -130,6 +134,6 @@ class AxiStreamExtractHeaderTests extends AxiStreamExtractHeaderTestsCommonSetup
   }
 
   test("abnormal packets") { implicit dut =>
-    testAbnormalPackets(dut, expectHeader = false)
+    testAbnormalPackets(dut, minHeaderLen = headerBytes)
   }
 }
