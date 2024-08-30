@@ -21,8 +21,8 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int, 
     val output = master(Axi4Stream(axisConfig))
     val header = master(Stream(Bits(outputLen * 8 bits)))
     val statistics = out(new Bundle {
-      val headerOnly = Reg(UInt(64 bits))
-      val incompleteHeader = Reg(UInt(64 bits))
+      val headerOnly = Reg(UInt(64 bits)) init 0
+      val incompleteHeader = Reg(UInt(64 bits)) init 0
     })
   }
 
@@ -104,23 +104,36 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int, 
         headerCaptured := headerCaptured | (beatSlice << ((outputLen - headerRemaining) * 8)).resized
         headerRemaining := headerRemaining - consumeLen
 
-        // when we got the entire header AND there are still segments left in the beat:
-        // pass through beat with TKEEP cleared for the bytes consumed
-        // (we don't pass through a beat with all zero TKEEP)
-        when (headerRemaining === 0) {
+        // write header
+        def emitHeader(nextState: State) = {
           io.header.valid := True
           io.header.payload := headerCaptured
           when (io.header.ready) {
-            goto(writeEarlyBody)
+            goto(nextState)
           }
+        }
+
+        when (headerRemaining === 0) {
+          // got the entire header and a captured beat;
+          // beat might have TKEEP all zero but that's fine
+          emitHeader(writeEarlyBody)
         } otherwise {
           when (beatCaptured.keep === 0) {
             // beat is depleted but header not complete yet, need new one
-            goto(captureBeat)
             when (beatCaptured.last) {
-              // unexpected end of packet -- drop header
-              inc(_.incompleteHeader)
-              goto(idle)
+              // unexpected end of packet
+              allowPartial generate {
+                // allowed -- emit partial header
+                when (io.header.fire) { inc(_.incompleteHeader) }
+                emitHeader(idle)
+              }
+              !allowPartial generate {
+                // not allowed -- drop header
+                inc(_.incompleteHeader)
+                goto(idle)
+              }
+            } otherwise {
+              goto(captureBeat)
             }
           }
         }
