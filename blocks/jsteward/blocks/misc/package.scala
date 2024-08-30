@@ -42,23 +42,24 @@ package object misc {
     def apply[T <: Data](
                           input: Stream[T],
                           outputCount: Int,
-                          enableMask: Bits,
-                          maskChanged: Bool
+                          enableMask: Flow[Bits],
                         ): Vec[Stream[T]] = new ImplicitArea[Vec[Stream[T]]] {
       // FIXME: same as OHMasking.roundRobin?
       assert(
-        outputCount == enableMask.getWidth,
+        outputCount == enableMask.payload.getWidth,
         "enable mask bit width does not match with output count"
       )
       val select = Reg(UInt(log2Up(outputCount) bits))
+      val mask = Reg(enableMask.payload.clone)
 
       // reset select when mask changes
       // FIXME: can this happen when a request is ongoing?
-      when(maskChanged) {
-        select := CountTrailingZeroes(enableMask).resized
+      when(enableMask.valid) {
+        select := CountTrailingZeroes(enableMask.payload).resized
+        mask := enableMask.payload
       }
 
-      val doubleMask = enableMask ## enableMask
+      val doubleMask = mask ## mask
       val shiftedMask = doubleMask >> (select + 1)
       val inc = CountTrailingZeroes(shiftedMask.resize(outputCount)) + 1
       when(input.fire) {

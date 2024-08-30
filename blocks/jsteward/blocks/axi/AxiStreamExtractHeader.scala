@@ -11,6 +11,8 @@ import spinal.lib.fsm._
  * stream.  Emits NULL bytes but also consumes them properly.  This module is intended to be chained.
  * To enable partial header output, set [[minHeaderLen]] smaller than [[maxHeaderLen]].
  *
+ * TODO: allow header length target to be changed at runtime to decode stuff like IP options
+ *
  * @param axisConfig   AXI-Stream config for input and output
  * @param maxHeaderLen maximum length of header, in bytes
  * @param minHeaderLen minimum length of header, in bytes; default to [[maxHeaderLen]] (no partial headers)

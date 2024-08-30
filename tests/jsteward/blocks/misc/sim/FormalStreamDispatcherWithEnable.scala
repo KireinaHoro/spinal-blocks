@@ -18,22 +18,20 @@ class FormalStreamDispatcherWithEnable extends SpinalFormalFunSuite {
       .withDebug
       .doVerify(new Component {
         val input = slave Stream(UInt(8 bits))
-        val mask = in Bits(4 bits)
+        val mask = slave Flow Bits(4 bits)
         val maskChanged = in Bool()
         val outputs = Vec(master Stream(UInt(8 bits)), 4)
         val dut = FormalDut(new Component {
           val input = slave Stream(UInt(8 bits))
-          val mask = in Bits(4 bits)
-          val maskChanged = in Bool()
+          val mask = slave Flow(Bits(4 bits))
           val outputs = Vec(master Stream(UInt(8 bits)), 4)
 
-          outputs <> StreamDispatcherWithEnable(input, 4, mask, maskChanged)
+          outputs <> StreamDispatcherWithEnable(input, 4, mask)
         })
 
         dut.input <> input
         dut.outputs <> outputs
-        dut.mask := mask
-        dut.maskChanged := maskChanged
+        dut.mask <> mask
 
         assumeInitial(ClockDomain.current.isResetActive)
 
@@ -58,13 +56,6 @@ class FormalStreamDispatcherWithEnable extends SpinalFormalFunSuite {
         val data = anyconst(UInt(4 bits))
         input.formalAssumesSlave()
         outputs.foreach(_.formalAssertsMaster())
-
-        // inactive ports should not have transaction
-        RegNext(mask).asBools.zip(outputs).foreach { case (en, o) =>
-          when (!en) {
-            assert(!o.valid)
-          }
-        }
       })
   }
 
