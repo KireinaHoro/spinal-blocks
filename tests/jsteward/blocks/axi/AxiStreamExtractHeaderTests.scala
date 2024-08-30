@@ -100,12 +100,12 @@ class AxiStreamExtractHeaderTests extends DutSimFunSuite[AxiStreamExtractHeader]
 
     packetIn.send(incompleteHeader)
     sleepCycles(50)
-    assert(dut.io.statistics.incompleteHeader.value.toBigInt == 1, "incomplete header counter did not increase")
-    assert(dut.io.statistics.headerOnly.value.toBigInt == 0, "header only counter increased")
+    assert(dut.io.statistics.incompleteHeader.toBigInt == 1, "incomplete header counter did not increase")
+    assert(dut.io.statistics.headerOnly.toBigInt == 0, "header only counter increased")
 
     packetIn.send(headerOnly)
     sleepCycles(50)
-    assert(dut.io.statistics.incompleteHeader.value.toBigInt == 1, "incomplete header changed")
-    assert(dut.io.statistics.headerOnly.value.toBigInt == 1, "header only counter did not increase")
+    assert(dut.io.statistics.incompleteHeader.toBigInt == 1, "incomplete header changed")
+    assert(dut.io.statistics.headerOnly.toBigInt == 1, "header only counter did not increase")
   }
 }

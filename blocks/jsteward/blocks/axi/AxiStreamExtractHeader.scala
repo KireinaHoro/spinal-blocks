@@ -21,9 +21,13 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int, 
     val output = master(Axi4Stream(axisConfig))
     val header = master(Stream(Bits(outputLen * 8 bits)))
     val statistics = out(new Bundle {
-      val headerOnly = Counter(64 bits)
-      val incompleteHeader = Counter(64 bits)
-    }).setAsReg()
+      val headerOnly = Reg(UInt(64 bits))
+      val incompleteHeader = Reg(UInt(64 bits))
+    })
+  }
+
+  def inc(f: io.statistics.type => UInt) = {
+    f(io.statistics) := f(io.statistics) + 1
   }
 
   io.statistics.flatten.foreach(_ init U(0))
@@ -115,7 +119,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int, 
             goto(captureBeat)
             when (beatCaptured.last) {
               // unexpected end of packet -- drop header
-              io.statistics.incompleteHeader.increment()
+              inc(_.incompleteHeader)
               goto(idle)
             }
           }
@@ -131,7 +135,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, outputLen: Int, 
           when (beatCaptured.last) {
             when (beatCaptured.keep === 0) {
               // keep == 0 AND last beat: we got a header only packet
-              io.statistics.headerOnly.increment()
+              inc(_.headerOnly)
             }
             goto(idle)
           } otherwise {
