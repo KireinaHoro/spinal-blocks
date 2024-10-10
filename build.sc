@@ -1,13 +1,11 @@
-import mill._
-import mill.util._
-import scalalib._
-
+import mill._, util._, scalalib._
+import mill.define.ModuleRef
 import $file.deps.spinalhdl.build
 
 val scalaVersions = Seq("2.13.12")
 
 trait BlocksBaseModule extends CrossScalaModule {
-  def blocksMod = Some(blocks(crossScalaVersion))
+  def blocksMod = ModuleRef(blocks(crossScalaVersion))
   def spinalDeps: Agg[ScalaModule] = Agg(spinalCore, spinalLib, spinalTester)
   def spinalPluginOptions: T[Seq[String]] = spinalIdslPlugin.pluginOptions
   override def moduleDeps = super.moduleDeps ++ spinalDeps
@@ -18,9 +16,9 @@ trait MySpinal { this: deps.spinalhdl.build.SpinalModule =>
   def name: String
   override def millSourcePath = os.pwd / "deps" / "spinalhdl" / name
 
-  override def coreMod = Some(spinalCore)
-  override def libMod = Some(spinalLib)
-  override def idslpluginMod = Some(spinalIdslPlugin)
+  override def coreMod = ModuleRef(spinalCore)
+  override def libMod = ModuleRef(spinalLib)
+  override def idslpluginMod = ModuleRef(spinalIdslPlugin)
 }
 
 object spinalCore extends deps.spinalhdl.build.Core with MySpinal { def name = "core" }
@@ -67,7 +65,7 @@ trait BlocksTester extends BlocksBaseModule {
     millSourcePath / "tests"
   )
   override def scalacOptions = super.scalacOptions() ++ spinalPluginOptions()
-  override def moduleDeps = super.moduleDeps ++ Agg(blocksMod.get)
+  override def moduleDeps = super.moduleDeps ++ Agg(blocksMod())
   override def ivyDeps = Agg(
     ivy"com.lihaoyi::os-lib:0.9.3",
   )
