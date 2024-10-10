@@ -1,6 +1,7 @@
 package jsteward.blocks.eci
 
 import spinal.core._
+import spinal.lib.PackedBundle
 
 import scala.language.postfixOps
 
@@ -74,107 +75,106 @@ object EciCmdDefs {
 
 import jsteward.blocks.eci.EciCmdDefs._
 
-case class EciVcCatMreq0to10() extends Bundle {
+case class EciVcCatMreq0to10() extends PackedBundle {
   val address = EciAddress
-  val xb2 = Bits(2 bits)
-  val xb3 = Bits(3 bits)
+  skipOver(5 bits)
   val ns = Bool()
   val dmask = EciDmask
   val rreqId = EciId
-  val xb4 = Bits(4 bits)
+  skipOver(4 bits)
   val opcode = EciOpcode
 }
 
-case class EciVcCatMreq24() extends Bundle {
+case class EciVcCatMreq24() extends PackedBundle {
   val ppvid = EciPpvid
-  val xb1 = Bool()
+  skipOver(1 bit)
   val rtad = EciRtad
-  val xb40 = Bits(40 bits)
+  skipOver(40 bits)
   val rreqId = EciId
-  val xb3 = Bits(4 bits)
+  skipOver(4 bits)
   val opcode = EciOpcode
 }
 
-case class EciVcCatMrsp0to2() extends Bundle {
+case class EciVcCatMrsp0to2() extends PackedBundle {
   val address = EciAddress
-  val xb5 = Bits(5 bits)
+  skipOver(5 bits)
   val ns = Bool()
   val dmask = EciDmask
-  val xb10 = Bits(9 bits)
+  skipOver(9 bits)
   val opcode = EciOpcode
 }
 
-case class EciVcCatMrsp3to8() extends Bundle {
+case class EciVcCatMrsp3to8() extends PackedBundle {
   val address = EciAddress
-  val xb5 = Bits(5 bits)
+  skipOver(5 bits)
   val ns = Bool()
   val dmask = EciDmask
   val hreqId = EciHreqId
-  val xb3 = Bits(3 bits)
+  skipOver(3 bits)
   val opcode = EciOpcode
 }
 
-case class EciVcCatMrsp24() extends Bundle {
+case class EciVcCatMrsp24() extends PackedBundle {
   val ppvid = EciPpvid
-  val xb1 = Bool()
+  skipOver(1 bit)
   val rtad = EciRtad
-  val xb35 = Bits(35 bits)
+  skipOver(35 bits)
   val ns = Bool()
-  val xb12 = Bits(13 bits)
+  skipOver(13 bits)
   val opcode = EciOpcode
 }
 
-case class EciVcCatMrsp9to10() extends Bundle {
-  val xb5 = Bits(5 bits)
+case class EciVcCatMrsp9to10() extends PackedBundle {
+  skipOver(5 bits)
   val fillo = Bits(2 bits)
   val cacheLineIndex = EciClIndex
-  val xb1_2 = Bool()
+  skipOver(1 bit)
   val dirty = Bits(4 bits)
-  val xb1 = Bool()
+  skipOver(1 bit)
   val dmask = EciDmask
   val rreqId = EciId
-  val xb3 = Bits(3 bits)
+  skipOver(3 bits)
   val nxm = Bool()
   val opcode = EciOpcode
 }
 
-case class EciVcCatMfwd0to15() extends Bundle {
+case class EciVcCatMfwd0to15() extends PackedBundle {
   val address = EciAddress
-  val xb2 = Bits(2 bits)
+  skipOver(2 bits)
   val rnode = EciNodeId
-  val xb1 = Bool()
+  skipOver(1 bit)
   val ns = Bool()
   val dmask = EciDmask
   val hreqId = EciHreqId
-  val xb3 = Bits(3 bits)
+  skipOver(3 bits)
   val opcode = EciOpcode
 }
 
-case class LclMfwd() extends Bundle {
+case class LclMfwd() extends PackedBundle {
   val address = EciAddress
-  val xb2 = Bits(2 bits)
+  skipOver(2 bits)
   val rnode = EciNodeId
-  val xb1 = Bool()
+  skipOver(1 bit)
   val ns = Bool()
   val dmask = EciDmask
   val hreqId = EciHreqId
-  val xb3 = Bits(3 bits)
+  skipOver(3 bits)
   val opcode = EciOpcode
 }
 
-case class LclMrsp0to1() extends Bundle {
+case class LclMrsp0to1() extends PackedBundle {
   val address = EciAddress
-  val xb5 = Bits(5 bits)
+  skipOver(5 bits)
   val ns = Bool()
   val dmask = EciDmask
   val hreqId = EciHreqId
-  val xb3 = Bits(3 bits)
+  skipOver(3 bits)
   val opcode = EciOpcode
 }
 
-case class LclMrsp2() extends Bundle {
+case class LclMrsp2() extends PackedBundle {
   val address = EciAddress
-  val xb19 = Bits(19 bits)
+  skipOver(19 bits)
   val opcode = EciOpcode
 }
 
