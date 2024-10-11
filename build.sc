@@ -9,6 +9,7 @@ trait BlocksBaseModule extends CrossScalaModule {
   def spinalDeps: Agg[ScalaModule] = Agg(spinalCore, spinalLib, spinalTester)
   def spinalPluginOptions: T[Seq[String]] = spinalIdslPlugin.pluginOptions
   override def moduleDeps = super.moduleDeps ++ spinalDeps
+  override def scalacOptions = super.scalacOptions() ++ spinalPluginOptions()
 }
 
 trait MySpinal { this: deps.spinalhdl.build.SpinalModule =>
@@ -47,7 +48,6 @@ trait BlocksModule extends BlocksBaseModule { outer =>
     super.resources() :+ PathRef(outResources)
   }
 
-  override def scalacOptions = super.scalacOptions() ++ spinalPluginOptions()
   override def ivyDeps = Agg(
     ivy"com.lihaoyi::os-lib:0.9.3",
   )
@@ -64,7 +64,6 @@ trait BlocksTester extends BlocksBaseModule {
   override def sources = T.sources(
     millSourcePath / "tests"
   )
-  override def scalacOptions = super.scalacOptions() ++ spinalPluginOptions()
   override def moduleDeps = super.moduleDeps ++ Agg(blocksMod())
   override def ivyDeps = Agg(
     ivy"com.lihaoyi::os-lib:0.9.3",
