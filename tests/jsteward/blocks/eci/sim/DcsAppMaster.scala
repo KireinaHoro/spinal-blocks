@@ -76,11 +76,13 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
    *
    * @param addr       start address of read, does not have to be aligned
    * @param totalBytes number of bytes to read
+   * @param doInvIdemptCheck whether we should enforce voluntary invalidation and then reload on same addr should
+   *                         always have same result as first read
    * @return read data truncated to the right length
    * @note FIXME the DCS doesn't actually handle sub-cacheline access properly (talk to adamt), so we forbid
    *       sub-cacheline access for now
    */
-  def read(addr: BigInt, totalBytes: Int): List[Byte] = {
+  def read(addr: BigInt, totalBytes: Int, doInvIdemptCheck: Boolean = true): List[Byte] = {
     val builder = new mutable.ArrayBuilder.ofByte
 
     val roundedAddr = roundAddr(addr)
@@ -99,11 +101,15 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
 
         clState.invalidate()
         val reread = clState.read
-        assert(reread == firstRead,
-          s"""CL voluntary reload mismatch:
-             |first read: "${firstRead.bytesToHex}"
-             |reread:     "${reread.bytesToHex}"
-             |""".stripMargin)
+        if (doInvIdemptCheck) {
+          assert(reread == firstRead,
+            s"""CL voluntary reload mismatch:
+               |first read: "${firstRead.bytesToHex}"
+               |reread:     "${reread.bytesToHex}"
+               |""".stripMargin)
+        } else {
+          log(f"Voluntary invalidation idempotency check skipped!")
+        }
 
         clockDomain.waitActiveEdge(Random.nextInt(20))
       }
