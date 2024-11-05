@@ -147,6 +147,40 @@ class RegAllocatorFactory {
     def toCName = toCMacroName.toLowerCase
   }
 
+  val typeToMackerelDefMap = mutable.Map[Class[_], String]()
+  def addMackerelEpilogue[T](ty: Class[T], defs: String): Unit = {
+    typeToMackerelDefMap += (ty -> defs)
+  }
+  def writeMackerel(variant: String, outPath: os.Path): Unit = {
+    // TODO: allow specifying name and description (instead of hard-coding PIONIC)
+
+    val regDefs = walkMappings[String] { case (blockName, idx, base, name, desc) =>
+      val rn = s"${blockName}_${idx}_${name.toCName}"
+      val ra = desc.attr.toString.toLowerCase
+      val addr = desc.addr(base)
+      val dsc = s"$name @ $blockName #$idx"
+      if (desc.count == 1) {
+        f"register $rn $ra addr(base, $addr%#x) \"$dsc\" type(uint${desc.size * 8});"
+      } else {
+        f"regarray $rn $ra addr(base, $addr%#x) [${desc.count}] \"$dsc\" type(uint${desc.size * 8});"
+      }
+    }
+
+    os.remove(outPath)
+    os.write(outPath, s"""
+        |/*
+        | * pionic_$variant.dev: register description of the $variant Enzian NIC.
+        | *
+        | * Describes registers exposed over the CSR interface as well as datatypes of
+        | * various descriptors in memory.
+        | */
+        |device pionic_$variant lsbfirst (addr base) "Enzian NIC over $variant" {
+        |${regDefs.mkString("\n")}
+        |${typeToMackerelDefMap.values.mkString("\n")}
+        |};
+        |""".stripMargin)
+  }
+
   def writeHeader(prefix: String, outPath: os.Path): Unit = {
     val prefixCN = prefix.toCName
     val prefixCMN = prefix.toCMacroName
