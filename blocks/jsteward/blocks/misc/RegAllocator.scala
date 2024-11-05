@@ -111,34 +111,43 @@ class RegAllocatorFactory {
 
   private val blocks = new GlobalMap
 
+  trait RegAllocWalker[T] {
+    def apply(blockName: String, blockIdx: Int, blockBase: BigInt, regName: String, regDesc: RegDesc): T
+  }
+
+  def walkMappings[T](walker: RegAllocWalker[T]): Seq[T] = {
+    blocks.flatMap { case (blockName, block) =>
+      block.allocatedBases.values.zipWithIndex.flatMap { case (base, idx) =>
+        block.blockMap.map { case (name, desc) =>
+          walker(blockName, idx, base, name, desc)
+        }
+      }
+    }.toSeq
+  }
+
   def dumpAll(): Unit = {
     println("Dumping global register map:")
-    blocks.foreach { case (blockName, block) =>
-      block.allocatedBases.values.foreach { base =>
-        println(f"==============")
-        block.blockMap.foreach { case (name, desc) =>
-          if (desc.count == 1) {
-            // single register
-            println(f"[$blockName@$base%#x] ${desc.addr(base)}%#x\t: $name (${desc.size} bytes, ${desc.attr})")
-          } else {
-            0 until desc.count foreach { i =>
-              println(f"[$blockName@$base%#x] ${desc.addr(base, i)}%#x\t: $name #$i (${desc.size} bytes, ${desc.attr})")
-            }
-          }
+    walkMappings { case (blockName, blockIdx, base, name, desc) =>
+      if (desc.count == 1) {
+        // single register
+        println(f"[$blockName#$blockIdx]\t${desc.addr(base)}%#x\t: $name (${desc.size} bytes, ${desc.attr})")
+      } else {
+        0 until desc.count foreach { i =>
+          println(f"[$blockName#$blockIdx]\t${desc.addr(base, i)}%#x\t: $name #$i (${desc.size} bytes, ${desc.attr})")
         }
       }
     }
   }
 
-  // TODO: emit JSON for driver generator
-  def writeHeader(prefix: String, outPath: os.Path): Unit = {
-    implicit class StringRich(s: String) {
-      def toCMacroName: String = "[A-Z]|\\d+".r.replaceAllIn(s, { m =>
-        "_" + m.group(0)
-      }).toUpperCase.replace(':', '_')
+  implicit class StringRich(s: String) {
+    def toCMacroName: String = "[A-Z]|\\d+".r.replaceAllIn(s, { m =>
+      "_" + m.group(0)
+    }).toUpperCase.replace(':', '_')
 
-      def toCName = toCMacroName.toLowerCase
-    }
+    def toCName = toCMacroName.toLowerCase
+  }
+
+  def writeHeader(prefix: String, outPath: os.Path): Unit = {
     val prefixCN = prefix.toCName
     val prefixCMN = prefix.toCMacroName
 
