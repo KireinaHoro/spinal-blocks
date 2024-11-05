@@ -1,20 +1,23 @@
 package jsteward.blocks.misc
 
 import spinal.core._
+import spinal.lib.bus.regif.AccessType
 
 import scala.collection.mutable
+
+/// FIXME: we should port this to RegIf (one day...)
 
 trait RegBlockReadBack {
   def apply(name: String, subName: String = ""): BigInt
 }
 
 trait RegBlockAlloc {
-  def apply(name: String, subName: String = ""): BigInt
-  def block(name: String, subName: String = "", count: Int): Seq[BigInt]
+  def apply(name: String, subName: String = "", readSensitive: Boolean = false, attr: AccessType = AccessType.RW): BigInt
+  def block(name: String, subName: String = "", count: Int, readSensitive: Boolean = false, attr: AccessType = AccessType.RW): Seq[BigInt]
 }
 
 class RegAllocatorFactory {
-  private case class RegDesc(baseOffset: BigInt, size: BigInt, count: Int) {
+  private case class RegDesc(baseOffset: BigInt, size: BigInt, count: Int, attr: AccessType) {
     def addr(blockBase: BigInt, idx: Int = 0) = {
       assert(idx < count, s"trying to access reg idx $idx, larger than total of $count instances")
       val ret = baseOffset + blockBase + size * idx
@@ -35,11 +38,11 @@ class RegAllocatorFactory {
     private var readSensitiveAddrOffset: BigInt = blockLen
 
     trait FullAlloc {
-      def apply(name: String, subName: String = "", idx: Int = 0, count: Int = 1, size: BigInt = defaultSize, readSensitive: Boolean = false): BigInt
+      def apply(name: String, subName: String = "", idx: Int = 0, count: Int = 1, size: BigInt = defaultSize, readSensitive: Boolean = false, attr: AccessType = AccessType.RW): BigInt
       def toGeneric = new RegBlockAlloc {
-        def apply(name: String, subName: String): BigInt = FullAlloc.this.apply(name, subName)
-        def block(name: String, subName: String, count: Int) =
-          for (i <- 0 until count) yield FullAlloc.this.apply(name, subName, i, count)
+        def apply(name: String, subName: String, readSensitive: Boolean, attr: AccessType): BigInt = FullAlloc.this.apply(name, subName, readSensitive = readSensitive, attr = attr)
+        def block(name: String, subName: String, count: Int, readSensitive: Boolean, attr: AccessType) =
+          for (i <- 0 until count) yield FullAlloc.this.apply(name, subName, i, count, readSensitive = readSensitive, attr = attr)
       }
     }
 
@@ -57,7 +60,7 @@ class RegAllocatorFactory {
       assert(!allocatedBases.isDefinedAt(blockIdx), f"block index $blockIdx already allocated for $blockName!")
       allocatedBases.update(blockIdx, base)
 
-      (name: String, subName: String, idx: Int, count: Int, size: BigInt, readSensitive: Boolean) => {
+      (name: String, subName: String, idx: Int, count: Int, size: BigInt, readSensitive: Boolean, attr: AccessType) => {
         val key = genKey(name, subName)
         if (allocatedBases.size > 1) {
           // this is a block recall (e.g. multiple instances of the same plugin)
@@ -90,10 +93,11 @@ class RegAllocatorFactory {
           blockMap.get(key) match {
             case None =>
               // create new RegDesc
-              blockMap.update(key, RegDesc(pushReg(), size, count))
+              blockMap += key -> RegDesc(pushReg(), size, count, attr)
             case Some(desc) =>
               // we should expand the RegDesc by exactly one
               assert(desc.count == count, "tries to read reg with different replication count")
+              assert(desc.attr == attr, s"tries to change access type from ${desc.attr} to $attr")
           }
 
           blockMap(key).addr(base, idx)
@@ -115,10 +119,10 @@ class RegAllocatorFactory {
         block.blockMap.foreach { case (name, desc) =>
           if (desc.count == 1) {
             // single register
-            println(f"[$blockName@$base%#x] ${desc.addr(base)}%#x\t: $name (${desc.size} bytes)")
+            println(f"[$blockName@$base%#x] ${desc.addr(base)}%#x\t: $name (${desc.size} bytes, ${desc.attr})")
           } else {
             0 until desc.count foreach { i =>
-              println(f"[$blockName@$base%#x] ${desc.addr(base, i)}%#x\t: $name #$i (${desc.size} bytes)")
+              println(f"[$blockName@$base%#x] ${desc.addr(base, i)}%#x\t: $name #$i (${desc.size} bytes, ${desc.attr})")
             }
           }
         }
