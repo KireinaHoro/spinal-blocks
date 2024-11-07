@@ -151,40 +151,52 @@ class RegAllocatorFactory {
   def addMackerelEpilogue[T](ty: Class[T], defs: String): Unit = {
     typeToMackerelDefMap += (ty -> defs)
   }
-  def writeMackerel(variant: String, outPath: os.Path): Unit = {
+  def writeMackerel(variant: String, outDir: os.Path, prefix: String): Unit = {
     // TODO: allow specifying name and description (instead of hard-coding PIONIC)
 
-    val regDefs = walkMappings[String] { case (blockName, idx, base, name, desc) =>
-      val rn = s"${blockName}_${idx}_${name.toCName}"
+    val blockDefs = mutable.Map[String, StringBuilder]()
+    walkMappings { case (blockName, idx, _, name, desc) if idx == 0 =>
+      val builder = blockDefs.getOrElseUpdate(blockName, new StringBuilder())
+      val rn = name.toCName
       val ra = desc.attr.toString.toLowerCase
-      val addr = desc.addr(base)
-      val dsc = s"$name @ $blockName #$idx"
+      val addr = desc.addr(0)
+      val dsc = s"$name @ $blockName"
       if (desc.size > 8) {
         // do not emit register declaration if size is too big
         println(s"Skipping Mackerel definition for $name with size ${desc.size}")
-        ""
       } else if (desc.count == 1) {
-        f"register $rn $ra addr(base, $addr%#x) \"$dsc\" type(uint${desc.size * 8});"
+        builder.append(f"register $rn $ra addr(base, $addr%#x) \"$dsc\" type(uint${desc.size * 8});\n")
       } else {
-        f"regarray $rn $ra addr(base, $addr%#x) [${desc.count}] \"$dsc\" type(uint${desc.size * 8});"
+        builder.append(f"regarray $rn $ra addr(base, $addr%#x) [${desc.count}] \"$dsc\" type(uint${desc.size * 8});\n")
       }
+    case _ =>
     }
 
-    os.remove(outPath)
-    os.write(outPath, s"""
-        |/*
-        | * pionic_$variant.dev: register description of the $variant Enzian NIC.
-        | *
-        | * Describes registers exposed over the CSR interface as well as datatypes of
-        | * various descriptors in memory.
-        | */
-        |device pionic_$variant lsbfirst (addr base) "Enzian NIC over $variant" {
-        |${regDefs.mkString("\n")}
-        |${typeToMackerelDefMap.values.mkString("\n")}
-        |};
-        |""".stripMargin)
+    blockDefs += ("dtypes" -> new StringBuilder(typeToMackerelDefMap.values.mkString("\n")))
+
+    blockDefs.foreach {
+      case (_, body) if body.isEmpty =>
+      case (dn, body) =>
+        val outPath = outDir / s"${prefix}_$dn.dev"
+        os.remove(outPath)
+        os.write(outPath, s"""
+           |/*
+           | * pionic_${variant}_$dn.dev: register description of the $variant Enzian NIC.
+           | *
+           | * Describes registers exposed over the CSR interface as well as datatypes of
+           | * various descriptors in memory.
+           | *
+           | * Repeating register blocks are broken into multiple devices to allow software
+           | * to index them.
+           | */
+           |device pionic_${variant}_$dn lsbfirst (addr base) "$dn block for Enzian NIC ($variant)" {
+           |$body
+           |};
+           |""".stripMargin)
+    }
   }
 
+  // used as supplement to mackerel files, record where the bases are
   def writeHeader(prefix: String, outPath: os.Path): Unit = {
     val prefixCN = prefix.toCName
     val prefixCMN = prefix.toCMacroName
@@ -192,27 +204,18 @@ class RegAllocatorFactory {
     val defLines = blocks.flatMap { case (blockName, block) =>
       val bname = blockName.toCMacroName
       if (block.allocatedBases.size == 1) {
-        block.blockMap.flatMap { case (name, desc) =>
-          val rname = name.toCMacroName
-          val base = block.allocatedBases.values.head
-          Seq(
-            f"#define ${prefixCMN}_${bname}_$rname ${desc.addr(base)}%#x",
-            f"#define ${prefixCMN}_${bname}_${rname}_SIZE ${desc.size}%#x",
-          )
-        }
+        val base = block.allocatedBases.values.head
+        Seq(f"#define ${prefixCMN}_${bname}_BASE $base%#x")
       } else {
         val arrayName = s"__${prefixCN}_${blockName.toCName}_bases"
         Seq(
           f"static uint64_t $arrayName[] __attribute__((unused)) = {",
         ) ++ block.allocatedBases.values.map { base =>
           f"  $base%#x,"
-        } ++ Seq("};") ++ block.blockMap.flatMap { case (name, desc) =>
-          val rname = name.toCMacroName
-          Seq(
-            f"#define ${prefixCMN}_${bname}_$rname(blockIdx) (${desc.baseOffset}%#x + $arrayName[blockIdx])",
-            f"#define ${prefixCMN}_${bname}_${rname}_SIZE ${desc.size}%#x",
-          )
-        }
+        } ++ Seq(
+          "};",
+          s"#define ${prefixCMN}_${bname}_BASE(blockIdx) ($arrayName[blockIdx])",
+        )
       } :+ ""
     }
 
