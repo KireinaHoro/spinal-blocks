@@ -159,7 +159,11 @@ class RegAllocatorFactory {
       val ra = desc.attr.toString.toLowerCase
       val addr = desc.addr(base)
       val dsc = s"$name @ $blockName #$idx"
-      if (desc.count == 1) {
+      if (desc.size > 8) {
+        // do not emit register declaration if size is too big
+        println(s"Skipping Mackerel definition for $name with size ${desc.size}")
+        ""
+      } else if (desc.count == 1) {
         f"register $rn $ra addr(base, $addr%#x) \"$dsc\" type(uint${desc.size * 8});"
       } else {
         f"regarray $rn $ra addr(base, $addr%#x) [${desc.count}] \"$dsc\" type(uint${desc.size * 8});"
