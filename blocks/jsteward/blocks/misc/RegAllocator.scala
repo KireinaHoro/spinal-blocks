@@ -151,7 +151,7 @@ class RegAllocatorFactory {
   def addMackerelEpilogue[T](ty: Class[T], defs: String): Unit = {
     typeToMackerelDefMap += (ty -> defs)
   }
-  def writeMackerel(variant: String, outDir: os.Path, prefix: String): Unit = {
+  def writeMackerel(outDir: os.Path, prefix: String): Unit = {
     // TODO: allow specifying name and description (instead of hard-coding PIONIC)
 
     val blockDefs = mutable.Map[String, StringBuilder]()
@@ -163,6 +163,7 @@ class RegAllocatorFactory {
       val dsc = s"$name @ $blockName"
       if (desc.size > 8) {
         // do not emit register declaration if size is too big
+        // large descriptors should be expressed as datatypes
         println(s"Skipping Mackerel definition for $name with size ${desc.size}")
       } else if (desc.count == 1) {
         builder.append(f"register $rn $ra addr(base, $addr%#x) \"$dsc\" type(uint${desc.size * 8});\n")
@@ -177,11 +178,13 @@ class RegAllocatorFactory {
     blockDefs.foreach {
       case (_, body) if body.isEmpty =>
       case (dn, body) =>
-        val outPath = outDir / s"${prefix}_$dn.dev"
+        val devName = if (dn == "dtypes") prefix else s"${prefix}_$dn"
+        val outPath = outDir / s"$devName.dev"
+        val argDecl = if (dn == "dtypes") "" else "addr base"
         os.remove(outPath)
         os.write(outPath, s"""
            |/*
-           | * pionic_${variant}_$dn.dev: register description of the $variant Enzian NIC.
+           | * ${devName}.dev: register description of ${devName}.
            | *
            | * Describes registers exposed over the CSR interface as well as datatypes of
            | * various descriptors in memory.
@@ -189,7 +192,7 @@ class RegAllocatorFactory {
            | * Repeating register blocks are broken into multiple devices to allow software
            | * to index them.
            | */
-           |device pionic_${variant}_$dn lsbfirst (addr base) "$dn block for Enzian NIC ($variant)" {
+           |device $devName lsbfirst ($argDecl) "$dn block for $prefix" {
            |$body
            |};
            |""".stripMargin)
