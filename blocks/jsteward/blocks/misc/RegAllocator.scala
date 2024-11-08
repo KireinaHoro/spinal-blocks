@@ -8,7 +8,7 @@ import scala.collection.mutable
 /// FIXME: we should port this to RegIf (one day...)
 
 trait RegBlockReadBack {
-  def apply(name: String, subName: String = ""): BigInt
+  def apply(name: String, subName: String = "", idx: Int = 0): BigInt
 }
 
 trait RegBlockAlloc {
@@ -50,8 +50,8 @@ class RegAllocatorFactory {
       assert(allocatedBases.isDefinedAt(blockIdx), s"trying to read back non-existent block index $blockIdx on block $blockName")
       val base = allocatedBases(blockIdx)
 
-      (name: String, subName: String) => {
-        blockMap(genKey(name, subName)).addr(base)
+      (name: String, subName: String, idx: Int) => {
+        blockMap(genKey(name, subName)).addr(base, idx)
       }
     }
 
