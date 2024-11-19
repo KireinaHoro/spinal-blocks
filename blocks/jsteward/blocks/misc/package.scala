@@ -38,6 +38,18 @@ package object misc {
     }
   }
 
+  implicit class RichStream[T <: Data](s: Stream[T]) {
+    /** generate a stream that drives the current stream, with a padded payload */
+    def padSlave(low: Int, high: Int = 0): Stream[Bits] = {
+      val pw = s.payload.getBitsWidth
+      val ret = Stream(Bits(pw+low+high bits))
+      ret.translateInto(s) { case (orig, padded) =>
+        orig.assignFromBits(padded(low+pw-1 downto low))
+      }
+      ret
+    }
+  }
+
   object StreamDispatcherWithEnable {
     def apply[T <: Data](
                           input: Stream[T],
