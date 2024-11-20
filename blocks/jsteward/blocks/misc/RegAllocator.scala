@@ -147,14 +147,21 @@ class RegAllocatorFactory {
     def toCName = toCMacroName.toLowerCase
   }
 
-  val typeToMackerelDefMap = mutable.Map[Class[_], String]()
-  def addMackerelEpilogue[T](ty: Class[T], defs: String): Unit = {
-    typeToMackerelDefMap += (ty -> defs)
+  private case class MackerelTypeDef(clazz: Class[_], defs: String, targetFile: String)
+  private val mackerelTypeDefs = mutable.ListBuffer[MackerelTypeDef]()
+  def addMackerelEpilogue[T](ty: Class[T], defs: String, target: String = "dtypes"): Unit = {
+    mackerelTypeDefs += MackerelTypeDef(ty, defs, target)
   }
   def writeMackerel(outDir: os.Path, prefix: String): Unit = {
     // TODO: allow specifying name and description (instead of hard-coding PIONIC)
 
     val blockDefs = mutable.Map[String, StringBuilder]()
+
+    mackerelTypeDefs.foreach { case MackerelTypeDef(_, d, target) =>
+      val builder = blockDefs.getOrElseUpdate(target, new StringBuilder)
+      builder.append(d + "\n")
+    }
+
     walkMappings { case (blockName, idx, _, name, desc) if idx == 0 =>
       val builder = blockDefs.getOrElseUpdate(blockName, new StringBuilder())
       val rn = name.toCName
@@ -177,14 +184,17 @@ class RegAllocatorFactory {
     case _ =>
     }
 
-    blockDefs += ("dtypes" -> new StringBuilder(typeToMackerelDefMap.values.mkString("\n")))
-
     blockDefs.foreach {
       case (_, body) if body.isEmpty =>
       case (dn, body) =>
         val devName = if (dn == "dtypes") prefix else s"${prefix}_$dn"
         val outPath = outDir / s"$devName.dev"
         val argDecl = if (dn == "dtypes") "" else "addr base"
+        // FIXME: import system is broken in Mackerel anyways
+        val importLine = if (mackerelTypeDefs.nonEmpty && dn != "dtypes") {
+          s"import $prefix;"
+        } else ""
+
         os.remove(outPath)
         os.write(outPath, s"""
            |/*
@@ -196,6 +206,7 @@ class RegAllocatorFactory {
            | * Repeating register blocks are broken into multiple devices to allow software
            | * to index them.
            | */
+           |
            |device $devName lsbfirst ($argDecl) "$dn block for $prefix" {
            |$body
            |};
