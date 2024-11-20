@@ -12,12 +12,12 @@ trait RegBlockReadBack {
 }
 
 trait RegBlockAlloc {
-  def apply(name: String, subName: String = "", readSensitive: Boolean = false, attr: AccessType = AccessType.RW): BigInt
+  def apply(name: String, subName: String = "", readSensitive: Boolean = false, attr: AccessType = AccessType.RW, ty: String = ""): BigInt
   def block(name: String, subName: String = "", count: Int, readSensitive: Boolean = false, attr: AccessType = AccessType.RW): Seq[BigInt]
 }
 
 class RegAllocatorFactory {
-  private case class RegDesc(baseOffset: BigInt, size: BigInt, count: Int, attr: AccessType) {
+  private case class RegDesc(baseOffset: BigInt, size: BigInt, count: Int, attr: AccessType, ty: String) {
     def addr(blockBase: BigInt, idx: Int = 0) = {
       assert(idx < count, s"trying to access reg idx $idx, larger than total of $count instances")
       val ret = baseOffset + blockBase + size * idx
@@ -38,9 +38,9 @@ class RegAllocatorFactory {
     private var readSensitiveAddrOffset: BigInt = blockLen
 
     trait FullAlloc {
-      def apply(name: String, subName: String = "", idx: Int = 0, count: Int = 1, size: BigInt = defaultSize, readSensitive: Boolean = false, attr: AccessType = AccessType.RW): BigInt
+      def apply(name: String, subName: String = "", idx: Int = 0, count: Int = 1, size: BigInt = defaultSize, readSensitive: Boolean = false, attr: AccessType = AccessType.RW, ty: String = ""): BigInt
       def toGeneric = new RegBlockAlloc {
-        def apply(name: String, subName: String, readSensitive: Boolean, attr: AccessType): BigInt = FullAlloc.this.apply(name, subName, readSensitive = readSensitive, attr = attr)
+        def apply(name: String, subName: String, readSensitive: Boolean, attr: AccessType, ty: String): BigInt = FullAlloc.this.apply(name, subName, readSensitive = readSensitive, attr = attr, ty = ty)
         def block(name: String, subName: String, count: Int, readSensitive: Boolean, attr: AccessType) =
           for (i <- 0 until count) yield FullAlloc.this.apply(name, subName, i, count, readSensitive = readSensitive, attr = attr)
       }
@@ -60,7 +60,7 @@ class RegAllocatorFactory {
       assert(!allocatedBases.isDefinedAt(blockIdx), f"block index $blockIdx already allocated for $blockName!")
       allocatedBases.update(blockIdx, base)
 
-      (name: String, subName: String, idx: Int, count: Int, size: BigInt, readSensitive: Boolean, attr: AccessType) => {
+      (name: String, subName: String, idx: Int, count: Int, size: BigInt, readSensitive: Boolean, attr: AccessType, ty: String) => {
         val key = genKey(name, subName)
         if (allocatedBases.size > 1) {
           // this is a block recall (e.g. multiple instances of the same plugin)
@@ -93,7 +93,7 @@ class RegAllocatorFactory {
           blockMap.get(key) match {
             case None =>
               // create new RegDesc
-              blockMap += key -> RegDesc(pushReg(), size, count, attr)
+              blockMap += key -> RegDesc(pushReg(), size, count, attr, ty)
             case Some(desc) =>
               // we should expand the RegDesc by exactly one
               assert(desc.count == count, "tries to read reg with different replication count")
@@ -161,14 +161,18 @@ class RegAllocatorFactory {
       val ra = desc.attr.toString.toLowerCase
       val addr = desc.addr(0)
       val dsc = s"$name @ $blockName"
+      val emitTy = if (desc.ty.isEmpty) {
+        s"uint${desc.size * 8}"
+      } else desc.ty
       if (desc.size > 8) {
         // do not emit register declaration if size is too big
         // large descriptors should be expressed as datatypes
+        // TODO: emit datatype after mackerel support is added
         println(s"Skipping Mackerel definition for $name with size ${desc.size}")
       } else if (desc.count == 1) {
-        builder.append(f"register $rn $ra addr(base, $addr%#x) \"$dsc\" type(uint${desc.size * 8});\n")
+        builder.append(f"register $rn $ra addr(base, $addr%#x) \"$dsc\" type($emitTy);\n")
       } else {
-        builder.append(f"regarray $rn $ra addr(base, $addr%#x) [${desc.count}] \"$dsc\" type(uint${desc.size * 8});\n")
+        builder.append(f"regarray $rn $ra addr(base, $addr%#x) [${desc.count}] \"$dsc\" type($emitTy);\n")
       }
     case _ =>
     }
