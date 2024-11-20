@@ -203,40 +203,50 @@ class RegAllocatorFactory {
     }
   }
 
-  // used as supplement to mackerel files, record where the bases are
+  // used as supplement to mackerel files.  records:
+  // - where the bases of sub devices are
+  // - where datatypes are (TODO: remove after support for datatype reg is added)
   def writeHeader(prefix: String, outPath: os.Path): Unit = {
     val prefixCN = prefix.toCName
     val prefixCMN = prefix.toCMacroName
+    val builder = new StringBuilder
 
-    val defLines = blocks.flatMap { case (blockName, block) =>
+    builder.append(s"#ifndef __${prefixCMN}_REGS_H__\n")
+    builder.append(s"#define __${prefixCMN}_REGS_H__\n")
+
+    blocks.foreach { case (blockName, block) =>
       val bname = blockName.toCMacroName
       if (block.allocatedBases.size == 1) {
         val base = block.allocatedBases.values.head
-        Seq(f"#define ${prefixCMN}_${bname}_BASE $base%#x")
+        builder.append(f"#define ${prefixCMN}_${bname}_BASE $base%#x\n")
       } else {
         val arrayName = s"__${prefixCN}_${blockName.toCName}_bases"
-        Seq(
-          f"static uint64_t $arrayName[] __attribute__((unused)) = {",
-        ) ++ block.allocatedBases.values.map { base =>
-          f"  $base%#x,"
-        } ++ Seq(
-          "};",
-          s"#define ${prefixCMN}_${bname}_BASE(blockIdx) ($arrayName[blockIdx])",
-        )
-      } :+ ""
+
+        builder.append(s"static uint64_t $arrayName[] __attribute__((unused)) = {\n")
+        block.allocatedBases.values.foreach { base =>
+          builder.append(f"  $base%#x,\n")
+        }
+        builder.append("};\n")
+
+        builder.append(s"#define ${prefixCMN}_${bname}_BASE(blockIdx) ($arrayName[blockIdx])\n")
+      }
+      builder.append("\n")
     }
 
+    // for oversized registers, emit addresses to allow access as datatypes
+    // TODO: this won't be needed once mackerel supports datatype as reg
+    walkMappings { case (blockName, idx, _, name, desc) if idx == 0 && desc.size > 8 =>
+      val bname = blockName.toCMacroName
+      val n = name.toCMacroName
+      val addr = desc.addr(0)
+      builder.append(f"#define ${prefixCMN}_${bname}_${n}_BASE $addr%#x\n")
+    case _ =>
+    }
+
+    builder.append(s"#endif // __${prefixCMN}_REGS_H__\n")
+
     os.remove(outPath)
-    os.write(outPath,
-      defLines.mkString(
-        s"""|#ifndef __${prefixCMN}_REGS_H__
-            |#define __${prefixCMN}_REGS_H__
-            |
-            |""".stripMargin,
-        "\n",
-        s"""|
-            |#endif // __${prefixCMN}_REGS_H__
-            |""".stripMargin))
+    os.write(outPath, builder.toString)
   }
 
   private def genKey(name: String, subName: String) = {
