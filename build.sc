@@ -53,21 +53,18 @@ trait BlocksModule extends BlocksBaseModule { outer =>
   )
 
   object test extends ScalaTests with TestModule.ScalaTest {
-    override def moduleDeps = outer.moduleDeps
+    override def moduleDeps = outer.moduleDeps ++ Agg(outer)
     override def millSourcePath = outer.millSourcePath
     override def sources = T.sources(millSourcePath / "tests")
+    override def ivyDeps = Agg(ivy"com.lihaoyi::os-lib:0.9.3")
   }
 }
 
 trait BlocksTester extends BlocksBaseModule {
   override def millSourcePath = os.pwd
-  override def sources = T.sources(
-    millSourcePath / "tests"
-  )
+  override def sources = T.sources(millSourcePath / "tests")
   override def moduleDeps = super.moduleDeps ++ Agg(blocksMod())
-  override def ivyDeps = Agg(
-    ivy"com.lihaoyi::os-lib:0.9.3",
-  )
+  override def ivyDeps = Agg(ivy"com.lihaoyi::os-lib:0.9.3")
 }
 
 // vi: ft=scala
