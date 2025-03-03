@@ -124,6 +124,14 @@ case class AxiStreamAligner(axisConfig: Axi4StreamConfig) extends Component {
           io.input.ready := True
           // we now have a full beat, output directly and also save
           io.output.payload := nextFullBeat
+
+          // did we save part of the last beat in the last cycle?
+          when(stagingBeats(nextStaging).last) {
+            // stall upstream when we had to inject one more beat
+            io.input.ready := False
+            nextFullBeat.last := True
+          }
+
           when(io.input.last) {
             when(headBeat.keep === B(0)) {
               // we don't have tail to output, this is the last beat to downstream
@@ -156,6 +164,7 @@ case class AxiStreamAligner(axisConfig: Axi4StreamConfig) extends Component {
       whenIsActive {
         // output registered value
         io.output.payload := stagingBeats(nextStaging)
+        io.output.valid := True
         when(io.output.ready) {
           nextStaging := 1 - nextStaging
           goto(captureFragment)
@@ -165,6 +174,7 @@ case class AxiStreamAligner(axisConfig: Axi4StreamConfig) extends Component {
     val waitLast: State = new State {
       whenIsActive {
         io.output.payload := stagingBeats(nextStaging)
+        io.output.valid := True
         when(io.output.ready) {
           goto(idle)
         }
