@@ -27,7 +27,9 @@ class AxiStreamAlignerTests extends DutSimFunSuite[AxiStreamAligner] {
       maxNullSegment = 63, // first beat should have at least one beat
       nullSegmentOnlyAtBeginning = true,
     )
-    val packetOut = Axi4StreamSlave(dut.io.output, dut.clockDomain)
+    val packetOut = Axi4StreamSlave(dut.io.output, dut.clockDomain,
+      disallowGaps = true,
+    )
 
     (packetIn, packetOut)
   }

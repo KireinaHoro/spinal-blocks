@@ -24,6 +24,8 @@ case class AxiStreamAligner(axisConfig: Axi4StreamConfig) extends Component {
   assert(axisConfig.useLast, "must enable TLAST or we don't know packet boundary")
   assert(axisConfig.useKeep, "must enable TKEEP or there are no gaps to close")
 
+  io.output.assertPersistence()
+
   // example operation for 64b, shift = 5 (* 8):
   // MSB ............... LSB
   //  1  1  1  0  0  0  0  0
