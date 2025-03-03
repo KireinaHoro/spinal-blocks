@@ -9,9 +9,8 @@ import spinal.lib.fsm._
 /**
  * Extract (up to) the first [[maxHeaderLen]] bytes from an [[Axi4Stream]]; these bytes will be stripped from the output
  * stream.  Emits NULL bytes but also consumes them properly.  This module is intended to be chained.
- * To enable partial header output, set [[minHeaderLen]] smaller than [[maxHeaderLen]].
- *
- * TODO: allow header length target to be changed at runtime to decode stuff like IP options
+ * To enable partial header output, set [[minHeaderLen]] smaller than [[maxHeaderLen]].  This feature can be used to
+ * handle IP headers, for example.
  *
  * @param axisConfig   AXI-Stream config for input and output
  * @param maxHeaderLen maximum length of header, in bytes
