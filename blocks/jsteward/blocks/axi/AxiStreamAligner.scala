@@ -30,8 +30,11 @@ case class AxiStreamAligner(axisConfig: Axi4StreamConfig) extends Component {
   // AA AA AA xx xx xx xx xx
   // CC CC CC BB BB BB BB BB
 
+  // we do not allow beats with keep all zero, therefore only 6 bits of keep
+  assert(!io.input.valid || io.input.keep =/= B(0))
+
   // only valid during first beat
-  val toShiftFirstBeat = CountTrailingZeroes(io.input.keep)
+  val toShiftFirstBeat = CountTrailingZeroes(io.input.keep).resize(log2Up(axisConfig.dataWidth) - 1)
   // saved for all following beats
   val toShiftSaved = Reg(toShiftFirstBeat)
   // select which to use
@@ -121,7 +124,7 @@ case class AxiStreamAligner(axisConfig: Axi4StreamConfig) extends Component {
           // we now have a full beat, output directly and also save
           io.output.payload := nextFullBeat
           when(io.input.last) {
-            when(headBeat.keep === headBeat.getZero) {
+            when(headBeat.keep === B(0)) {
               // we don't have tail to output, this is the last beat to downstream
               nextFullBeat.last := True
             } otherwise {
