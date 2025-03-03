@@ -113,12 +113,11 @@ case class AxiStreamAligner(axisConfig: Axi4StreamConfig) extends Component {
           }
         }
       }
-      onExit {
-        toShift := toShiftSaved
-      }
     }
     val captureFragment: State = new State {
       whenIsActive {
+        toShift := toShiftSaved
+
         when(io.input.valid) {
           stagingBeats(nextStaging) := nextFullBeat
           stagingBeats(1 - nextStaging) := headBeat
