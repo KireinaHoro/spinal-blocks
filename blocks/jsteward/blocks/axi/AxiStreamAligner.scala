@@ -36,7 +36,7 @@ case class AxiStreamAligner(axisConfig: Axi4StreamConfig) extends Component {
   assert(!io.input.valid || io.input.keep =/= B(0))
 
   // only valid during first beat
-  val toShiftFirstBeat = CountTrailingZeroes(io.input.keep).resize(log2Up(axisConfig.dataWidth) - 1)
+  val toShiftFirstBeat = CountTrailingZeroes(io.input.keep).resize(log2Up(axisConfig.dataWidth))
   // saved for all following beats
   val toShiftSaved = Reg(toShiftFirstBeat)
   // select which to use
@@ -47,7 +47,7 @@ case class AxiStreamAligner(axisConfig: Axi4StreamConfig) extends Component {
   // xx xx xx xx xx AA AA AA
   // BB BB BB BB BB CC CC CC
   // FIXME: is this efficient enough, or do we need our own impl with two shifting?
-  shiftedBeat.data := io.input.data.rotateRight(toShift * 8)
+  shiftedBeat.data := io.input.data.rotateRight((toShift * 8).resize(log2Up(axisConfig.dataWidth * 8)))
   shiftedBeat.keep := io.input.keep.rotateRight(toShift)
 
   // head fragment to put into staging registers (AA AA AA)
