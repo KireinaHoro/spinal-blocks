@@ -46,6 +46,8 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
   io.input.setBlocked()
   io.output.setIdle()
   io.header.setIdle()
+
+  io.output.assertPersistence()
   io.header.assertPersistence()
 
   val headerLenWidth = log2Up(maxHeaderLen) + 1
