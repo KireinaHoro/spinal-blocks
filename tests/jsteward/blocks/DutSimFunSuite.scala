@@ -68,7 +68,7 @@ abstract class DutSimFunSuite[T <: Component] extends FixtureAnyFunSuite with Be
       Console.withOut(printStream) {
         // write simulation log to a file
         println(s">>>>> Simulation transcript ${getClass.getCanonicalName} for test ${test.name}")
-        println(s">>>>> To reproduce: mill gen.test.testOnly ${getClass.getCanonicalName} -- -t ${test.name} -DsetupSeed=$setupSeed -DsimSeed=$lseed -DprintSimLog=true\n")
+        println(s">>>>> To reproduce: mill gen.test.testOnly ${getClass.getCanonicalName} -- -t \"${test.name}\" -DsetupSeed=$setupSeed -DsimSeed=$lseed -DprintSimLog=true\n")
 
         dut.doSim(test.name) { dut =>
           withFixture(test.toNoArgTest(dut)) match {
