@@ -93,6 +93,7 @@ case class AxiStreamAligner(axisConfig: Axi4StreamConfig) extends Component {
         io.input.freeRun()
         io.output.setIdle()
         toShift := toShiftFirstBeat
+        // only react to beats not completely NULL
         when(io.input.valid && io.input.keep =/= B(0)) {
           toShiftSaved := toShift
           // save stage beat but don't output yet since we don't have a full beat
@@ -110,9 +111,6 @@ case class AxiStreamAligner(axisConfig: Axi4StreamConfig) extends Component {
           } otherwise {
             goto(captureFragment)
           }
-        } elsewhen(io.input.valid) {
-          // completely NULL byte, ack but do nothing
-          io.input.ready := True
         }
       }
     }
