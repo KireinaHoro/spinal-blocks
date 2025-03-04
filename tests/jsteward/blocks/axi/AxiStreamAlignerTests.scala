@@ -18,13 +18,13 @@ class AxiStreamAlignerTests extends DutSimFunSuite[AxiStreamAligner] {
     .allOptimisation
     .compile(AxiStreamAligner(axisConfig))
 
-  def setup(dut: AxiStreamAligner) = {
+  def setup(dut: AxiStreamAligner, allowNullBeats: Boolean = false) = {
     SimTimeout(40000)
     dut.clockDomain.forkStimulus(period = 4)
 
     val packetIn = Axi4StreamMaster(dut.io.input, dut.clockDomain,
       nullSegmentProb = 1,
-      maxNullSegment = 63, // first beat should have at least one beat
+      maxNullSegment = if (allowNullBeats) 256 else 63,
       nullSegmentOnlyAtBeginning = true,
     )
     val packetOut = Axi4StreamSlave(dut.io.output, dut.clockDomain,
@@ -34,8 +34,8 @@ class AxiStreamAlignerTests extends DutSimFunSuite[AxiStreamAligner] {
     (packetIn, packetOut)
   }
 
-  test("randomized gap at front") { dut =>
-    val (packetIn, packetOut) = setup(dut)
+  def testSendRecv(dut: AxiStreamAligner, iters: Int, maxLen: Int, allowNullBeats: Boolean) = {
+    val (packetIn, packetOut) = setup(dut, allowNullBeats)
 
     val checkDataQueue = mutable.Queue[List[Byte]]()
 
@@ -51,10 +51,18 @@ class AxiStreamAlignerTests extends DutSimFunSuite[AxiStreamAligner] {
       }
     }
 
-    (0 until 50) foreach { _ =>
-      val toSend = Random.nextBytes(Random.between(4, 256)).toList
+    (0 until iters) foreach { _ =>
+      val toSend = Random.nextBytes(Random.between(4, maxLen)).toList
       checkDataQueue.enqueue(toSend)
       packetIn.send(toSend)
     }
+  }
+
+  test("randomized gap at front") { dut =>
+    testSendRecv(dut, 100, 1024, false)
+  }
+
+  test("null beats at front") { dut =>
+    testSendRecv(dut, 50, 1024, true)
   }
 }

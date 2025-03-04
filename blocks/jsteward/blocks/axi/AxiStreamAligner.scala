@@ -8,7 +8,8 @@ import spinal.lib.fsm._
 /**
  * For a stream that has a gap at the beginning, after process by [[AxiStreamExtractHeader]], shift the stream such
  * that the gap is closed and the stream is aligned.
- * Does not handle "holes" (TKEEP[x] == 0) in the middle of the stream.
+ * Does not handle "holes" (TKEEP[x] == 0) in the middle of the stream.  Allows the beginning of stream to contain
+ * fully-null (TKEEP == 0) beats, but not in the middle.
  *
  * @param axisConfig AXI-Stream config for input and output
  */
@@ -31,9 +32,6 @@ case class AxiStreamAligner(axisConfig: Axi4StreamConfig) extends Component {
   //  1  1  1  0  0  0  0  0
   // AA AA AA xx xx xx xx xx
   // CC CC CC BB BB BB BB BB
-
-  // we do not allow beats with keep all zero, therefore only 6 bits of keep
-  assert(!io.input.valid || io.input.keep =/= B(0))
 
   // only valid during first beat
   val toShiftFirstBeat = CountTrailingZeroes(io.input.keep).resize(log2Up(axisConfig.dataWidth))
@@ -95,7 +93,7 @@ case class AxiStreamAligner(axisConfig: Axi4StreamConfig) extends Component {
         io.input.freeRun()
         io.output.setIdle()
         toShift := toShiftFirstBeat
-        when(io.input.valid) {
+        when(io.input.valid && io.input.keep =/= B(0)) {
           toShiftSaved := toShift
           // save stage beat but don't output yet since we don't have a full beat
           stagingBeats(nextStaging) := headBeat
@@ -112,6 +110,9 @@ case class AxiStreamAligner(axisConfig: Axi4StreamConfig) extends Component {
           } otherwise {
             goto(captureFragment)
           }
+        } elsewhen(io.input.valid) {
+          // completely NULL byte, ack but do nothing
+          io.input.ready := True
         }
       }
     }
