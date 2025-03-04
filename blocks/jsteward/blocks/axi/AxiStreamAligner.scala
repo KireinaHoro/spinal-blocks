@@ -41,17 +41,18 @@ case class AxiStreamAligner(axisConfig: Axi4StreamConfig) extends Component {
   val toShiftSaved = Reg(toShiftFirstBeat)
   // select which to use
   val toShift = CombInit(toShiftFirstBeat)
+  val toShiftData = (toShift * 8).resize(log2Up(axisConfig.dataWidth * 8))
 
   val shiftedBeat = io.output.payload.clone
   // MSB ............... LSB
   // xx xx xx xx xx AA AA AA
   // BB BB BB BB BB CC CC CC
   // FIXME: is this efficient enough, or do we need our own impl with two shifting?
-  shiftedBeat.data := io.input.data.rotateRight((toShift * 8).resize(log2Up(axisConfig.dataWidth * 8)))
+  shiftedBeat.data := io.input.data.rotateRight(toShiftData)
   shiftedBeat.keep := io.input.keep.rotateRight(toShift)
 
   // head fragment to put into staging registers (AA AA AA)
-  val headDataMask = io.input.data.getAllTrue |>> (toShift * 8)
+  val headDataMask = io.input.data.getAllTrue |>> toShiftData
   val headKeepMask = io.input.keep.getAllTrue |>> toShift
   val headBeat = io.output.payload.clone
   headBeat.data := shiftedBeat.data & headDataMask
@@ -155,6 +156,9 @@ case class AxiStreamAligner(axisConfig: Axi4StreamConfig) extends Component {
               goto(waitFragment)
             } otherwise {
               nextStaging := 1 - nextStaging
+              when(headBeat.last) {
+                goto(waitLast)
+              }
             }
           }
         }
@@ -167,7 +171,12 @@ case class AxiStreamAligner(axisConfig: Axi4StreamConfig) extends Component {
         io.output.valid := True
         when(io.output.ready) {
           nextStaging := 1 - nextStaging
-          goto(captureFragment)
+          // did we save part of the last beat in the last cycle?
+          when(stagingBeats(1 - nextStaging).last) {
+            goto(waitLast)
+          } otherwise {
+            goto(captureFragment)
+          }
         }
       }
     }
