@@ -29,7 +29,9 @@ trait AxiStreamExtractHeaderTestsCommonSetup extends DutSimFunSuite[AxiStreamExt
 
     val packetIn = Axi4StreamMaster(dut.io.input, dut.clockDomain,
       nullSegmentProb = if (randomizeKeep) 0.5 else 0,
-      maxNullSegment = 16)
+      maxNullSegment = 16,
+      nullSegmentOnlyAtBeginning = true,
+    )
     val packetOut = Axi4StreamSlave(dut.io.output, dut.clockDomain)
 
     StreamReadyRandomizer(dut.io.header, dut.clockDomain)
@@ -85,6 +87,8 @@ trait AxiStreamExtractHeaderTestsCommonSetup extends DutSimFunSuite[AxiStreamExt
     }
 
     (0 until 50) foreach { _ => iteration }
+
+    waitUntil(checkHdrQueue.isEmpty)
   }
 }
 
@@ -98,6 +102,8 @@ class AxiStreamExtractHeaderTests extends AxiStreamExtractHeaderTestsCommonSetup
     val payloadsReceived = mutable.Queue[List[Byte]]()
 
     val (packetIn, packetOut) = setup(dut, { hdr =>
+      assert(hdrsExpected.nonEmpty, "expected no more headers!")
+
       val expected = hdrsExpected.dequeue()
       println(s"popped header ${expected.bytesToHex}")
       check(expected, hdr.toBytes.toList)
@@ -123,6 +129,8 @@ class AxiStreamExtractHeaderTests extends AxiStreamExtractHeaderTestsCommonSetup
       waitUntil(payloadsReceived.nonEmpty)
       check(payload, payloadsReceived.dequeue())
     }
+
+    waitUntil(hdrsExpected.isEmpty)
   }
 
   test("normal operation") { dut =>

@@ -8,7 +8,7 @@ import spinal.lib.fsm._
 
 /**
  * Extract (up to) the first [[maxHeaderLen]] bytes from an [[Axi4Stream]]; these bytes will be stripped from the output
- * stream.  Emits NULL bytes but also consumes them properly.  This module is intended to be chained.
+ * stream.  Assumes that any NULL bytes are only present at the beginning of the stream.  This module is intended to be chained.
  * To enable partial header output, set [[minHeaderLen]] smaller than [[maxHeaderLen]].  This feature can be used to
  * handle IP headers, for example.
  *
@@ -36,141 +36,137 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
 
   io.statistics.flatten.foreach(_ init U(0))
 
-  val beatCaptured = Reg(io.output.payload)
-  val headerCaptured = Reg(io.header.payload)
-
   assert(!axisConfig.useStrb, "TSTRB not supported")
+  assert(axisConfig.useKeep, "must enable TKEEP or we can't strip part of beat")
   assert(axisConfig.useLast, "must enable TLAST or we don't know packet boundary")
   assert(axisConfig.useKeep || maxHeaderLen % axisConfig.dataWidth == 0, "either enable TKEEP, or the header should be a multiple of TDATA")
-
-  io.input.setBlocked()
-  io.output.setIdle()
-  io.header.setIdle()
 
   io.output.assertPersistence()
   io.header.assertPersistence()
 
+  io.header.payload.setAsReg() init 0
+  io.header.valid := False
+
   val headerLenWidth = log2Up(maxHeaderLen) + 1
   val segmentLenWidth = log2Up(axisConfig.dataWidth) + 1
   val headerRemaining = Reg(UInt(headerLenWidth bits)) init maxHeaderLen
-  val beatSlice = CombInit(B(0, maxHeaderLen * 8 bits))
+
+  // by assumption, all following bytes are non-null
+  // unless the stream is only one beat and still has trailing gap
+  val segmentOffset = CountTrailingZeroes(io.input.keep).resize(segmentLenWidth)
+  // find first non-null byte
+  // since we skip all NULL beats in idle, keep =/= 0
+  val segmentLen = (axisConfig.dataWidth - segmentOffset - CountLeadingZeroes(io.input.keep)).resize(segmentLenWidth)
+
+  // how much did we consume (store into header)?
   val consumeLen = CombInit(U(0, headerLenWidth bits))
-  val segmentLen, segmentOffset = CombInit(U(0, segmentLenWidth bits))
-  val dataMask = if (axisConfig.useKeep) CombInit(B(0, axisConfig.dataWidth * 8 bits)) else null
-  val keepMask = if (axisConfig.useKeep) CombInit(B(0, axisConfig.dataWidth bits)) else null
+
+  val dataMask = ((U(1) << (consumeLen * 8)) - 1).asBits.resized
+  val keepMask = ((U(1) << consumeLen) - 1).asBits.resized
+
+  // fragment of header to store into headerCaptured
+  val headerFragment = ((io.input.data >> (segmentOffset * 8)) & dataMask).resize(maxHeaderLen * 8)
+  val headerFragmentShifted = headerFragment |<< ((maxHeaderLen - headerRemaining) * 8).resized
+
+  // keep with the captured fragment removed
+  io.output.keep := io.input.keep & ~(keepMask << segmentOffset).resize(axisConfig.dataWidth)
+  io.output.data := io.input.data
+  io.output.last := io.input.last
+  io.output.valid := io.input.valid
+  io.input.ready := io.output.ready
+
+  def captureHeaderFragmentAndOutput(): Unit = {
+    // store fragment
+    when (io.input.fire && io.input.keep =/= B(0)) {
+      io.header.payload := io.header.payload | headerFragmentShifted
+      headerRemaining := headerRemaining - consumeLen
+
+      when(headerRemaining === consumeLen) {
+        // we have a full header
+        when(io.output.last) {
+          when(io.output.keep === B(0)) {
+            inc(_.headerOnly)
+          }
+          fsm.goto(fsm.emitHeaderLast)
+        } otherwise {
+          fsm.goto(fsm.emitHeader)
+        }
+      } elsewhen (io.input.valid && io.input.last) {
+        // no full header yet, but already last beat
+        when(headerRemaining <= maxHeaderLen - minHeaderLen) {
+          // minimum header achieved, emit partial
+          fsm.goto(fsm.emitHeaderLast)
+          when(io.header.fire) {
+            inc(_.partialHeader)
+          }
+        } otherwise {
+          // minimum header not achieved, drop header
+          fsm.goto(fsm.idle)
+          inc(_.incompleteHeader)
+        }
+      } otherwise {
+        // no full header and not last beat
+        fsm.goto(fsm.captureHeader)
+      }
+    }
+  }
+
+  def clearHeaderBuf(): Unit = {
+    io.header.payload.clearAll()
+    headerRemaining := maxHeaderLen
+  }
 
   val fsm = new StateMachine {
     val idle: State = new State with EntryPoint {
       whenIsActive {
-        io.input.freeRun()
-        io.output.setIdle()
-        io.header.setIdle()
-        headerCaptured.clearAll()
-        headerRemaining := maxHeaderLen
-        when (io.input.valid) {
-          beatCaptured := io.input.payload
-          goto(writeHeader)
+        captureHeaderFragmentAndOutput()
+      }
+    }
+    val emitHeader: State = new State {
+      whenIsActive {
+        // halt streams during header output
+        io.input.ready := False
+        io.output.valid := False
+
+        io.header.valid := True
+        when (io.header.ready) {
+          clearHeaderBuf()
+          goto(passthrough)
         }
       }
     }
-    val captureBeat: State = new State {
+    val emitHeaderLast: State = new State {
       whenIsActive {
-        io.input.ready := True
-        when (io.input.valid) {
-          beatCaptured := io.input.payload
-          goto(writeHeader)
+        // halt streams during header output
+        io.input.ready := False
+        io.output.valid := False
+
+        io.header.valid := True
+        when (io.header.ready) {
+          clearHeaderBuf()
+          goto(idle)
         }
       }
     }
-    val writeHeader: State = new State {
+    val captureHeader: State = new State {
       whenIsActive {
-        !axisConfig.useKeep generate {
-          segmentOffset := 0
-          segmentLen := axisConfig.dataWidth
-          beatSlice := beatCaptured.data
-        }
-        axisConfig.useKeep generate {
-          segmentOffset := CountTrailingZeroes(beatCaptured.keep).resized // no AXIS beat should have TKEEP all low
-          segmentLen := CountTrailingZeroes(~(beatCaptured.keep >> segmentOffset)).resize(segmentLenWidth)
-
-          dataMask := ((U(1) << (consumeLen * 8)) - 1).asBits.resized
-          keepMask := ((U(1) << consumeLen) - 1).asBits.resized
-          beatSlice := ((beatCaptured.data >> (segmentOffset * 8)) & dataMask).resized
-          // mask off segment we just consumed
-          beatCaptured.keep := beatCaptured.keep & ~(keepMask << segmentOffset).resize(axisConfig.dataWidth)
-        }
-
-        when (headerRemaining <= segmentLen) {
-          consumeLen := headerRemaining
-        } otherwise {
-          consumeLen := segmentLen.resized
-        }
-
-        // store partial header
-        headerCaptured := headerCaptured | (beatSlice << ((maxHeaderLen - headerRemaining) * 8)).resized
-        headerRemaining := headerRemaining - consumeLen
-
-        // write header
-        def emitHeader(nextState: State) = {
-          io.header.valid := True
-          io.header.payload := headerCaptured
-          when (io.header.ready) {
-            goto(nextState)
-          }
-        }
-
-        when (headerRemaining === 0) {
-          // got the required header and a captured beat;
-          // beat might have TKEEP all zero but that's fine
-          emitHeader(writeEarlyBody)
-        } otherwise {
-          when (beatCaptured.keep === 0) {
-            // beat is depleted but header not complete yet, need new one
-            when (beatCaptured.last) {
-              // header not completely filled
-              when (headerRemaining <= maxHeaderLen - minHeaderLen) {
-                // minimum header achieved -- emit partial header
-                when (io.header.fire) { inc(_.partialHeader) }
-                emitHeader(idle)
-              } otherwise {
-                // minimum header not achieved -- drop header
-                inc(_.incompleteHeader)
-                goto(idle)
-              }
-            } otherwise {
-              goto(captureBeat)
-            }
-          }
-        }
+        captureHeaderFragmentAndOutput()
       }
     }
-    val writeEarlyBody: State = new State {
+    val passthrough: State = new State {
       whenIsActive {
-        // we allow an empty beat (TKEEP == 0) to simplify state transition logic
-        io.output.valid := True
-        io.output.payload := beatCaptured
-        when (io.output.ready) {
-          when (beatCaptured.last) {
-            when (beatCaptured.keep === 0) {
-              // keep == 0 AND last beat: we got a header only packet
-              inc(_.headerOnly)
-            }
-            goto(idle)
-          } otherwise {
-            // not last beat: more to follow
-            goto(writeBody)
-          }
-        }
-      }
-    }
-    val writeBody: State = new State {
-      whenIsActive {
-        // pass through rest of the stream
-        io.output << io.input
         when (io.output.lastFire) {
           goto(idle)
         }
       }
     }
+  }
+
+  when (fsm.isActive(fsm.passthrough)) {
+    consumeLen := 0
+  } elsewhen (headerRemaining <= segmentLen) {
+    consumeLen := headerRemaining
+  } otherwise {
+    consumeLen := segmentLen.resized
   }
 }
