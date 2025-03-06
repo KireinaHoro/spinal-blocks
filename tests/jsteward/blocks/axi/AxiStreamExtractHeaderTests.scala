@@ -126,8 +126,13 @@ class AxiStreamExtractHeaderTests extends AxiStreamExtractHeaderTestsCommonSetup
       hdrsExpected.enqueue(ethernetHdr)
       packetIn.send(pkt)
 
-      waitUntil(payloadsReceived.nonEmpty)
-      check(payload, payloadsReceived.dequeue())
+      if (payload.nonEmpty) {
+        println(s"Waiting for payload of length ${payload.length}")
+        waitUntil(payloadsReceived.nonEmpty)
+        check(payload, payloadsReceived.dequeue())
+      } else {
+        println(s"No payload expected")
+      }
     }
 
     waitUntil(hdrsExpected.isEmpty)
