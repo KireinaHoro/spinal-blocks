@@ -57,7 +57,7 @@ trait AxiStreamExtractHeaderTestsCommonSetup extends DutSimFunSuite[AxiStreamExt
         val payload = packetOut.recv()
 
         if (checkDataQueue.isEmpty) {
-          assert(payload.isEmpty, "should not receive data on the stream")
+          assert(payload.isEmpty, s"should not receive data on the stream, got ${payload.bytesToHex}")
         } else {
           check(checkDataQueue.dequeue(), payload)
         }

@@ -51,15 +51,17 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
   val segmentLenWidth = log2Up(axisConfig.dataWidth) + 1
   val headerRemaining = Reg(UInt(headerLenWidth bits)) init maxHeaderLen
 
+  // how much did we consume (store into header)?
+  val consumeLen = CombInit(U(0, headerLenWidth bits))
+
+  val headerRemainingNext = headerRemaining - consumeLen
+
   // by assumption, all following bytes are non-null
   // unless the stream is only one beat and still has trailing gap
   val segmentOffset = CountTrailingZeroes(io.input.keep).resize(segmentLenWidth)
   // find first non-null byte
   // since we skip all NULL beats in idle, keep =/= 0
   val segmentLen = (axisConfig.dataWidth - segmentOffset - CountLeadingZeroes(io.input.keep)).resize(segmentLenWidth)
-
-  // how much did we consume (store into header)?
-  val consumeLen = CombInit(U(0, headerLenWidth bits))
 
   val dataMask = ((U(1) << (consumeLen * 8)) - 1).asBits.resized
   val keepMask = ((U(1) << consumeLen) - 1).asBits.resized
@@ -79,9 +81,9 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
     // store fragment
     when (io.input.fire && io.input.keep =/= B(0)) {
       io.header.payload := io.header.payload | headerFragmentShifted
-      headerRemaining := headerRemaining - consumeLen
+      headerRemaining := headerRemainingNext
 
-      when(headerRemaining === consumeLen) {
+      when(headerRemainingNext === 0) {
         // we have a full header
         when(io.output.last) {
           when(io.output.keep === B(0)) {
@@ -93,12 +95,10 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
         }
       } elsewhen (io.input.valid && io.input.last) {
         // no full header yet, but already last beat
-        when(headerRemaining <= maxHeaderLen - minHeaderLen) {
+        when(headerRemainingNext <= maxHeaderLen - minHeaderLen) {
           // minimum header achieved, emit partial
           fsm.goto(fsm.emitHeaderLast)
-          when(io.header.fire) {
-            inc(_.partialHeader)
-          }
+          inc(_.partialHeader)
         } otherwise {
           // minimum header not achieved, drop header
           fsm.goto(fsm.idle)
@@ -119,6 +119,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
   val fsm = new StateMachine {
     val idle: State = new State with EntryPoint {
       whenIsActive {
+        clearHeaderBuf()
         captureHeaderFragmentAndOutput()
       }
     }
