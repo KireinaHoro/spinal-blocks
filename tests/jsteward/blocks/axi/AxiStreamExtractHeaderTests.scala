@@ -14,7 +14,6 @@ import scala.collection.mutable
 
 trait AxiStreamExtractHeaderTestsCommonSetup extends DutSimFunSuite[AxiStreamExtractHeader] {
   def dutGen: AxiStreamExtractHeader
-  def headerBytes = 14
 
   val axisConfig = Axi4StreamConfig(dataWidth = 64, useKeep = true, useLast = true)
   val dut = SimConfig.withConfig(SpinalConfig())
@@ -64,7 +63,7 @@ trait AxiStreamExtractHeaderTestsCommonSetup extends DutSimFunSuite[AxiStreamExt
     (packetIn, checkHdrQueue, checkDataQueue)
   }
 
-  def testAbnormalPackets(dut: AxiStreamExtractHeader, minHeaderLen: Int) = {
+  def testAbnormalPackets(dut: AxiStreamExtractHeader, minHeaderLen: Int, headerBytes: Int) = {
     implicit val d = dut
 
     val (packetIn, checkHdrQueue, checkDataQueue) = setup(dut, randomizeKeep = true)
@@ -97,9 +96,8 @@ trait AxiStreamExtractHeaderTestsCommonSetup extends DutSimFunSuite[AxiStreamExt
 }
 
 // test for Ethernet header on 64B datapaths
-// TODO: also test for longer headers on narrower datapaths
-class AxiStreamExtractHeaderTests extends AxiStreamExtractHeaderTestsCommonSetup {
-  def dutGen = AxiStreamExtractHeader(axisConfig, headerBytes)()
+class AxiStreamExtractHeaderEthernetTests extends AxiStreamExtractHeaderTestsCommonSetup {
+  def dutGen = AxiStreamExtractHeader(axisConfig, 14)()
 
   def testEthernetHeader(randomizeKeep: Boolean, iterations: Int, dut: AxiStreamExtractHeader) = {
     val (packetIn, hdrsExpected, pldsExpected) = setup(dut, randomizeKeep)
@@ -128,6 +126,27 @@ class AxiStreamExtractHeaderTests extends AxiStreamExtractHeaderTestsCommonSetup
   }
 
   test("abnormal packets") { implicit dut =>
-    testAbnormalPackets(dut, minHeaderLen = headerBytes)
+    testAbnormalPackets(dut, minHeaderLen = 14, headerBytes = 14)
+  }
+}
+
+// longer header of 130 B
+class AxiStreamExtractHeaderMultiBeatHeaderTests extends AxiStreamExtractHeaderTestsCommonSetup {
+  val hdrLen = 130
+  def dutGen = AxiStreamExtractHeader(axisConfig, hdrLen)()
+
+  test("long header") { dut =>
+    val (packetIn, hdrsExpected, pldsExpected) = setup(dut, randomizeKeep = true)
+
+    (0 until 100) foreach { _ =>
+      val hdr = Random.nextBytes(hdrLen).toList
+      val pld = Random.nextBytes(Random.nextInt(1024)).toList
+      val pkt = hdr ++ pld
+
+      hdrsExpected.enqueue((hdr, pld))
+      packetIn.send(pkt)
+    }
+
+    waitUntil(hdrsExpected.isEmpty && pldsExpected.isEmpty)
   }
 }
