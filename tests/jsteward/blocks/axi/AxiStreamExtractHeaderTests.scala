@@ -23,7 +23,7 @@ trait AxiStreamExtractHeaderTestsCommonSetup extends DutSimFunSuite[AxiStreamExt
     .allOptimisation
     .compile(dutGen) // 14B ethernet header
 
-  def setup(dut: AxiStreamExtractHeader, mon: Bits => Unit, randomizeKeep: Boolean) = {
+  def setup(dut: AxiStreamExtractHeader, randomizeKeep: Boolean) = {
     SimTimeout(40000)
     dut.clockDomain.forkStimulus(period = 4)
 
@@ -34,35 +34,40 @@ trait AxiStreamExtractHeaderTestsCommonSetup extends DutSimFunSuite[AxiStreamExt
     )
     val packetOut = Axi4StreamSlave(dut.io.output, dut.clockDomain)
 
-    StreamReadyRandomizer(dut.io.header, dut.clockDomain)
-    StreamMonitor(dut.io.header, dut.clockDomain)(mon)
-
-    (packetIn, packetOut)
-  }
-
-  def testAbnormalPackets(dut: AxiStreamExtractHeader, minHeaderLen: Int) = {
-    implicit val d = dut
-    val checkHdrQueue = mutable.Queue[List[Byte]]()
+    // we should always receive header before payload
+    val checkHdrQueue = mutable.Queue[(List[Byte], List[Byte])]()
     val checkDataQueue = mutable.Queue[List[Byte]]()
 
-    val (packetIn, packetOut) = setup(dut, { hdr =>
-      // we should only receive the second one
-      assert(checkHdrQueue.nonEmpty, "expected no more headers!")
+    StreamReadyRandomizer(dut.io.header, dut.clockDomain)
+    StreamMonitor(dut.io.header, dut.clockDomain) { hdr =>
+      assert(checkHdrQueue.nonEmpty, s"not expecting more headers, got ${hdr.toBytes.toList.bytesToHex}")
 
-      check(checkHdrQueue.dequeue(), hdr.toBytes.toList)
-    }, true)
+      val (expectedHdr, expectedPld) = checkHdrQueue.dequeue()
+
+      check(expectedHdr, hdr.toBytes.toList)
+
+      if (expectedPld.nonEmpty)
+        checkDataQueue.enqueue(expectedPld)
+    }
 
     fork {
       while (true) {
         val payload = packetOut.recv()
-
         if (checkDataQueue.isEmpty) {
-          assert(payload.isEmpty, s"should not receive data on the stream, got ${payload.bytesToHex}")
+          assert(payload.isEmpty, s"not expecting data on the stream, got ${payload.bytesToHex}")
         } else {
           check(checkDataQueue.dequeue(), payload)
         }
       }
     }
+
+    (packetIn, checkHdrQueue, checkDataQueue)
+  }
+
+  def testAbnormalPackets(dut: AxiStreamExtractHeader, minHeaderLen: Int) = {
+    implicit val d = dut
+
+    val (packetIn, checkHdrQueue, checkDataQueue) = setup(dut, randomizeKeep = true)
 
     var incompleteCounter, partialCounter, headerOnlyCounter = 0
 
@@ -71,8 +76,7 @@ trait AxiStreamExtractHeaderTestsCommonSetup extends DutSimFunSuite[AxiStreamExt
       val l = toSend.length
       val hdr = toSend.take(headerBytes).padTo(headerBytes, 0.toByte)
 
-      if (l >= minHeaderLen) checkHdrQueue.enqueue(hdr)
-      if (l > headerBytes) checkDataQueue.enqueue(toSend.drop(headerBytes))
+      if (l >= minHeaderLen) checkHdrQueue.enqueue((hdr, toSend.drop(headerBytes)))
 
       if (l == headerBytes) headerOnlyCounter += 1
       else if (l < headerBytes && l >= minHeaderLen) partialCounter += 1
@@ -88,7 +92,7 @@ trait AxiStreamExtractHeaderTestsCommonSetup extends DutSimFunSuite[AxiStreamExt
 
     (0 until 50) foreach { _ => iteration }
 
-    waitUntil(checkHdrQueue.isEmpty)
+    waitUntil(checkHdrQueue.isEmpty && checkDataQueue.isEmpty)
   }
 }
 
@@ -98,22 +102,7 @@ class AxiStreamExtractHeaderTests extends AxiStreamExtractHeaderTestsCommonSetup
   def dutGen = AxiStreamExtractHeader(axisConfig, headerBytes)()
 
   def testEthernetHeader(randomizeKeep: Boolean, iterations: Int, dut: AxiStreamExtractHeader) = {
-    val hdrsExpected = mutable.Queue[List[Byte]]()
-    val payloadsReceived = mutable.Queue[List[Byte]]()
-
-    val (packetIn, packetOut) = setup(dut, { hdr =>
-      assert(hdrsExpected.nonEmpty, "expected no more headers!")
-
-      val expected = hdrsExpected.dequeue()
-      println(s"popped header ${expected.bytesToHex}")
-      check(expected, hdr.toBytes.toList)
-    }, randomizeKeep)
-
-    fork {
-      while (true) {
-        payloadsReceived.enqueue(packetOut.recv())
-      }
-    }
+    val (packetIn, hdrsExpected, pldsExpected) = setup(dut, randomizeKeep)
 
     (0 until iterations) foreach { _ =>
       val macAddrs = Random.nextBytes(12).toList
@@ -123,19 +112,11 @@ class AxiStreamExtractHeaderTests extends AxiStreamExtractHeaderTestsCommonSetup
       val payload = Random.nextBytes(payloadLen).toList
       val pkt = ethernetHdr ++ payload
 
-      hdrsExpected.enqueue(ethernetHdr)
+      hdrsExpected.enqueue((ethernetHdr, payload))
       packetIn.send(pkt)
-
-      if (payload.nonEmpty) {
-        println(s"Waiting for payload of length ${payload.length}")
-        waitUntil(payloadsReceived.nonEmpty)
-        check(payload, payloadsReceived.dequeue())
-      } else {
-        println(s"No payload expected")
-      }
     }
 
-    waitUntil(hdrsExpected.isEmpty)
+    waitUntil(hdrsExpected.isEmpty && pldsExpected.isEmpty)
   }
 
   test("normal operation") { dut =>
