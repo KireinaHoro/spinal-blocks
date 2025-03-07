@@ -130,9 +130,9 @@ class AxiStreamExtractHeaderEthernetTests extends AxiStreamExtractHeaderTestsCom
   }
 }
 
-// longer header of 130 B
-class AxiStreamExtractHeaderMultiBeatHeaderTests extends AxiStreamExtractHeaderTestsCommonSetup {
-  val hdrLen = 130
+// longer header of 80 B
+class AxiStreamExtractHeaderMultiBeatTests extends AxiStreamExtractHeaderTestsCommonSetup {
+  def hdrLen = 80
   def dutGen = AxiStreamExtractHeader(axisConfig, hdrLen)()
 
   test("long header") { dut =>
@@ -148,5 +148,14 @@ class AxiStreamExtractHeaderMultiBeatHeaderTests extends AxiStreamExtractHeaderT
     }
 
     waitUntil(hdrsExpected.isEmpty && pldsExpected.isEmpty)
+  }
+}
+
+class AxiStreamExtractHeaderAllowPartialTests extends AxiStreamExtractHeaderTestsCommonSetup {
+  def hdrLen = 14
+  def dutGen = AxiStreamExtractHeader(axisConfig, hdrLen)(hdrLen - 4)
+
+  test("partial headers") { dut =>
+    testAbnormalPackets(dut, minHeaderLen = hdrLen - 4, headerBytes = hdrLen)
   }
 }
