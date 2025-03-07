@@ -69,15 +69,18 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
   val consumeLen = (headerRemaining <= segmentLen) ? headerRemaining | segmentLen.resized
   val headerRemainingNext = headerRemaining - consumeLen
 
-  // for assembling the header
-  val dataMask = ((U(1) << (consumeLen * 8)) - 1).asBits.resized
   // for masking out KEEP in first beat of output
   val keepMask = ((U(1) << consumeLen) - 1).asBits.resized
   val keepMaskSaved = Reg(keepMask) init 0
 
-  // fragment of header to store into headerCaptured
+  // get fragment of shifted header to OR into header.payload
+  val dataMask = ((U(1) << (consumeLen * 8)) - 1).asBits.resized
   val headerFragment = ((io.input.data >> (segmentOffset * 8)) & dataMask).resize(maxHeaderLen * 8)
+  // XXX: potential optimization:
+  // - MSB-align header.payload
+  // - for a new segment, OR into LSB and then barrel-shift to right
   val headerFragmentShifted = headerFragment |<< ((maxHeaderLen - headerRemaining) * 8).resized
+  val headerFragmentSaved = Reg(headerFragmentShifted) init 0
 
   // keep with the captured fragment removed
   io.output.keep := io.input.keep & ~(keepMaskSaved << segmentOffset).resize(axisConfig.dataWidth)
@@ -102,6 +105,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
         haltAll()
         clearHeaderBuf()
         when (io.input.valid) {
+          headerFragmentSaved := headerFragmentShifted
           goto(captureHeader)
         }
       }
@@ -109,7 +113,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
     val captureHeader: State = new State {
       whenIsActive {
         haltAll()
-        io.header.payload := io.header.payload | headerFragmentShifted
+        io.header.payload := io.header.payload | headerFragmentSaved
         headerRemaining := headerRemainingNext
 
         when (headerRemainingNext === 0) {
@@ -138,6 +142,19 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
         } otherwise {
           // no full header yet, more beats to come
           io.input.ready := True
+          when (!io.input.valid) {
+            goto(waitBeat)
+          } otherwise {
+            headerFragmentSaved := headerFragmentShifted
+          }
+        }
+      }
+    }
+    val waitBeat: State = new State {
+      whenIsActive {
+        when (io.input.valid) {
+          headerFragmentSaved := headerFragmentShifted
+          goto(captureHeader)
         }
       }
     }
