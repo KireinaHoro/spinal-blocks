@@ -31,6 +31,7 @@ trait AxiStreamExtractHeaderTestsCommonSetup extends DutSimFunSuite[AxiStreamExt
       maxNullSegment = 16,
       nullSegmentOnlyAtBeginning = true,
     )
+    packetIn.setFactor(0.9f)
     val packetOut = Axi4StreamSlave(dut.io.output, dut.clockDomain)
 
     // we should always receive header before payload
