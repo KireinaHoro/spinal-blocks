@@ -5,6 +5,7 @@ import spinal.lib._
 import spinal.lib.bus.amba4.axis.Axi4Stream.Axi4StreamBundle
 import spinal.lib.bus.amba4.axis._
 import spinal.lib.fsm._
+import spinal.lib.misc.pipeline._
 
 /**
  * Extract (up to) the first [[maxHeaderLen]] bytes from an [[Axi4Stream]]; these bytes will be stripped from the output
@@ -56,138 +57,94 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
 
   val headerLenWidth = log2Up(maxHeaderLen) + 1
   val segmentLenWidth = log2Up(axisConfig.dataWidth) + 1
-  val headerRemaining = Reg(UInt(headerLenWidth bits)) init maxHeaderLen
 
-  // by assumption, all following bytes are non-null
-  // unless the stream is only one beat and still has trailing gap
-  val segmentOffset = CountTrailingZeroes(io.input.keep).resize(segmentLenWidth)
-  // find first non-null byte
-  // since we skip all NULL beats in idle, keep =/= 0
-  val segmentLen = (axisConfig.dataWidth - segmentOffset - CountLeadingZeroes(io.input.keep)).resize(segmentLenWidth)
+  val hdrLeft = Reg(UInt(headerLenWidth bits)) init maxHeaderLen
+  val hdrSent = Reg(Bool()) init False
 
-  // how much did we consume (store into header)?
-  val consumeLen = (headerRemaining <= segmentLen) ? headerRemaining | segmentLen.resized
-  val headerRemainingNext = headerRemaining - consumeLen
+  // pipeline to calculate fragment of header from data and keep
+  val pip = new StageCtrlPipeline
+  pip.ctrl(0).up.arbitrateFrom(io.input)
 
-  // for masking out KEEP in first beat of output
-  val keepMask = ((U(1) << consumeLen) - 1).asBits.resized
-  val keepMaskSaved = Reg(keepMask) init 0
+  val captureInput = new pip.InsertArea {
+    val DATA = insert(io.input.data)
+    val KEEP = insert(io.input.keep)
+    val LAST = insert(io.input.last)
+  }
+  import captureInput._
 
-  // get fragment of shifted header to OR into header.payload
-  val dataMask = ((U(1) << (consumeLen * 8)) - 1).asBits.resized
-  val headerFragment = ((io.input.data >> (segmentOffset * 8)) & dataMask).resize(maxHeaderLen * 8)
-  // XXX: potential optimization:
-  // - MSB-align header.payload
-  // - for a new segment, OR into LSB and then barrel-shift to right
-  val headerFragmentShifted = headerFragment |<< ((maxHeaderLen - headerRemaining) * 8).resized
-  val headerFragmentSaved = RegNextWhen(headerFragmentShifted, io.input.valid) init 0
+  val calculateShifts = new pip.Ctrl(1) {
+    val SEG_OFF = insert(CountTrailingZeroes(KEEP).resize(segmentLenWidth))
+    val SEG_LEN = insert((U(axisConfig.dataWidth) - SEG_OFF - CountTrailingZeroes(KEEP)).resize(segmentLenWidth))
+    val CONSUME_LEN = insert((hdrLeft <= SEG_LEN).mux[UInt](hdrLeft, SEG_LEN))
+    val DATA_MASK = insert(((U(1) << (CONSUME_LEN * 8)) - 1).asBits.resize(8 * axisConfig.dataWidth))
+    val KEEP_MASK = insert(((U(1) << CONSUME_LEN) - 1).asBits.resize(axisConfig.dataWidth))
+
+    val hdrLeftNext = hdrLeft - CONSUME_LEN.resized
+    when (up.isFiring) {
+      hdrLeft := hdrLeftNext
+    }
+    val HDR_FULL        = insert(hdrLeftNext === 0)
+    val HDR_PARTIAL     = insert(hdrLeftNext <= maxHeaderLen - minHeaderLen)
+    val HDR_INCOMPLETE  = insert(hdrLeftNext > maxHeaderLen - minHeaderLen)
+
+    // store current header pointer for storing
+    val HDR_LEFT = insert(hdrLeft)
+  }
+  import calculateShifts._
+
+  val storeHeader = new pip.Ctrl(2) {
+    val MASKED_KEEP = insert(KEEP & ~(KEEP_MASK |<< SEG_OFF))
+
+    val hdrFrag = ((DATA >> (SEG_OFF * 8)) & DATA_MASK).resize(maxHeaderLen * 8)
+    val hdrFragShifted = hdrFrag |<< ((U(maxHeaderLen) - HDR_LEFT) * 8)
+
+    // save header when completely assembled
+    when (up.isFiring) {
+      io.header.payload := io.header.payload | hdrFragShifted
+    }
+  }
+  import storeHeader._
+
+  val outputHeader = new pip.Ctrl(3) {
+    when (up.isValid && !hdrSent) {
+      when(HDR_FULL || (HDR_PARTIAL && LAST)) {
+        io.header.valid := True
+        when(!io.header.ready) {
+          haltIt()
+        } otherwise {
+          hdrLeft := maxHeaderLen
+          io.header.payload.clearAll()
+          hdrSent := True
+        }
+      }
+    }
+
+    when (up.isFiring) {
+      when (LAST) {
+        when (HDR_INCOMPLETE) {
+          inc(_.incompleteHeader)
+        }.elsewhen (HDR_PARTIAL) {
+          inc(_.partialHeader)
+        }.elsewhen (SEG_LEN === CONSUME_LEN) {
+          inc(_.headerOnly)
+        }
+        hdrSent := False
+      }
+    }
+
+    // if we consumed the entire beat, do not pass through
+    terminateWhen(SEG_LEN === CONSUME_LEN)
+  }
+
+  new pip.Ctrl(4)
+
+  val po = pip.ctrls.values.last.down
 
   // keep with the captured fragment removed
-  io.output.keep := io.input.keep & ~(keepMaskSaved << segmentOffset).resize(axisConfig.dataWidth)
-  io.output.data := io.input.data
-  io.output.last := io.input.last
-  io.output.valid := io.input.valid
-  io.input.ready := io.output.ready
+  io.output.keep := po(MASKED_KEEP)
+  io.output.data := po(DATA)
+  io.output.last := po(LAST)
+  po.arbitrateTo(io.output)
 
-  def clearHeaderBuf(): Unit = {
-    io.header.payload.clearAll()
-    headerRemaining := maxHeaderLen
-  }
-
-  def haltAll(): Unit = {
-    io.input.ready := False
-    io.output.valid := False
-  }
-
-  val fsm = new StateMachine {
-    def captureValidBeat(): Unit = {
-      when (io.input.valid) {
-        headerRemaining := headerRemainingNext
-
-        // capture fragment of header saved in headerFragmentSaved
-        when (headerRemainingNext === 0) {
-          // we have a full header, save first beat mask and emit header
-          keepMaskSaved := keepMask
-          when (consumeLen === segmentLen && io.input.last) {
-            // we ate up the last byte
-            inc(_.headerOnly)
-          }
-          goto(emitHeader)
-        } elsewhen (io.input.last) {
-          // no full header yet, but already last beat
-          // must have consumed all bytes in beat
-          // let passthrough to consume the input beat
-          keepMaskSaved := keepMask
-          when (headerRemainingNext <= maxHeaderLen - minHeaderLen) {
-            // minimum header achieved, emit partial
-            goto(emitHeader)
-            inc(_.partialHeader)
-          } otherwise {
-            // minimum header not achieved, drop header
-            goto(idle)
-            io.input.ready := True
-            inc(_.incompleteHeader)
-          }
-        } otherwise {
-          // no full header yet, more beats to come
-          io.input.ready := True
-          when (!io.input.valid) {
-            goto(waitBeat)
-          } otherwise {
-            goto(captureHeader)
-          }
-        }
-      }
-    }
-
-    val idle: State = new State with EntryPoint {
-      whenIsActive {
-        haltAll()
-        clearHeaderBuf()
-        captureValidBeat()
-      }
-    }
-    val captureHeader: State = new State {
-      whenIsActive {
-        haltAll()
-        captureValidBeat()
-        io.header.payload := io.header.payload | headerFragmentSaved
-      }
-    }
-    val waitBeat: State = new State {
-      whenIsActive {
-        captureValidBeat()
-      }
-    }
-    val emitHeader: State = new State {
-      whenIsActive {
-        haltAll()
-        io.header.payload := io.header.payload | headerFragmentSaved
-        goto(emitHeader2)
-      }
-    }
-    val emitHeader2: State = new State {
-      whenIsActive {
-        haltAll()
-        io.header.valid := True
-        when (io.header.ready) {
-          clearHeaderBuf()
-          goto(passthrough)
-        }
-      }
-    }
-    val passthrough: State = new State {
-      whenIsActive {
-        when (io.input.valid && io.output.keep === 0) {
-          io.output.valid := False
-        }
-        when (io.input.fire) {
-          keepMaskSaved.clearAll()
-        }
-        when (io.input.lastFire) {
-          goto(idle)
-        }
-      }
-    }
-  }
+  pip.build()
 }
