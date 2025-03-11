@@ -70,15 +70,16 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
     val hdrLeft = Reg(UInt(headerLenWidth bits)) init maxHeaderLen
 
     val SEG_OFF = insert(CountTrailingZeroes(KEEP).resize(segmentLenWidth))
-    // FIXME: replace with popcnt?
-    val SEG_LEN = insert((U(axisConfig.dataWidth) - SEG_OFF - CountLeadingZeroes(KEEP)).resize(segmentLenWidth))
-    // FIXME: calculate expected mask from hdrLeft, AND with actual mask; no need to take min
-    val CONSUME_LEN = insert((hdrLeft <= SEG_LEN).mux[UInt](hdrLeft, SEG_LEN))
-    // FIXME: calculate directly with KEEP, no need to mask off excessive tail
-    val DATA_MASK = insert(((U(1) << (CONSUME_LEN * 8)) - 1).asBits.resize(8 * axisConfig.dataWidth))
-    val KEEP_MASK = insert(((U(1) << CONSUME_LEN) - 1).asBits.resize(axisConfig.dataWidth))
+    val SEG_LEN = insert(PopCount(KEEP).resize(segmentLenWidth))
 
-    val hdrLeftNext = hdrLeft - CONSUME_LEN.resized
+    val maskReq = ((U(1) << hdrLeft) - 1).asBits.resize(axisConfig.dataWidth)
+    val maskAvail = KEEP >> SEG_OFF
+    val KEEP_MASK = insert(maskReq & maskAvail)
+
+    // did we consume the entire beat?
+    val BEAT_CONSUMED = insert(hdrLeft >= SEG_LEN)
+
+    val hdrLeftNext = (hdrLeft > SEG_LEN) ? (hdrLeft - SEG_LEN.resized) | U(0)
     when (up.isFiring) {
       when (LAST) {
         hdrLeft := maxHeaderLen
@@ -100,7 +101,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
 
     val MASKED_KEEP = insert(KEEP & ~(KEEP_MASK |<< SEG_OFF))
 
-    val hdrFrag = ((DATA >> (SEG_OFF * 8)) & DATA_MASK).resize(maxHeaderLen * 8)
+    val hdrFrag = (DATA >> (SEG_OFF * 8)).resize(maxHeaderLen * 8)
     val hdrFragShifted = hdrFrag |<< ((U(maxHeaderLen) - HDR_LEFT) * 8)
     val HDR_OUT = insert(hdrBuf | hdrFragShifted)
 
@@ -135,7 +136,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
           inc(_.incompleteHeader)
         }.elsewhen (HDR_PARTIAL) {
           inc(_.partialHeader)
-        }.elsewhen (SEG_LEN === CONSUME_LEN) {
+        }.elsewhen (BEAT_CONSUMED) {
           inc(_.headerOnly)
         }
         hdrSent := False
@@ -143,7 +144,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
     }
 
     // if we consumed the entire beat, do not pass through
-    terminateWhen(SEG_LEN === CONSUME_LEN)
+    terminateWhen(BEAT_CONSUMED)
   }
 
   new pip.Ctrl(4)
