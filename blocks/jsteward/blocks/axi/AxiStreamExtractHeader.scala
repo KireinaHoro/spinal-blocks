@@ -87,7 +87,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
       }
     }
     val HDR_FULL        = insert(hdrLeftNext === 0)
-    val HDR_PARTIAL     = insert(hdrLeftNext <= maxHeaderLen - minHeaderLen)
+    val HDR_PARTIAL     = insert(hdrLeftNext > 0 && hdrLeftNext <= maxHeaderLen - minHeaderLen)
     val HDR_INCOMPLETE  = insert(hdrLeftNext > maxHeaderLen - minHeaderLen)
 
     // store current header pointer for storeHeader
