@@ -2,9 +2,7 @@ package jsteward.blocks.axi
 
 import spinal.core._
 import spinal.lib._
-import spinal.lib.bus.amba4.axis.Axi4Stream.Axi4StreamBundle
 import spinal.lib.bus.amba4.axis._
-import spinal.lib.fsm._
 import spinal.lib.misc.pipeline._
 
 /**
@@ -52,14 +50,10 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
   // we also do not handle completely NULL beats
   assert(!io.input.valid || io.input.keep =/= 0, "input should have NULL beats")
 
-  io.header.payload.setAsReg() init 0
-  io.header.valid := False
+  io.header.setIdle()
 
   val headerLenWidth = log2Up(maxHeaderLen) + 1
   val segmentLenWidth = log2Up(axisConfig.dataWidth) + 1
-
-  val hdrLeft = Reg(UInt(headerLenWidth bits)) init maxHeaderLen
-  val hdrSent = Reg(Bool()) init False
 
   // pipeline to calculate fragment of header from data and keep
   val pip = new StageCtrlPipeline
@@ -73,47 +67,63 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
   import captureInput._
 
   val calculateShifts = new pip.Ctrl(1) {
+    val hdrLeft = Reg(UInt(headerLenWidth bits)) init maxHeaderLen
+
     val SEG_OFF = insert(CountTrailingZeroes(KEEP).resize(segmentLenWidth))
-    val SEG_LEN = insert((U(axisConfig.dataWidth) - SEG_OFF - CountTrailingZeroes(KEEP)).resize(segmentLenWidth))
+    // FIXME: replace with popcnt?
+    val SEG_LEN = insert((U(axisConfig.dataWidth) - SEG_OFF - CountLeadingZeroes(KEEP)).resize(segmentLenWidth))
+    // FIXME: calculate expected mask from hdrLeft, AND with actual mask; no need to take min
     val CONSUME_LEN = insert((hdrLeft <= SEG_LEN).mux[UInt](hdrLeft, SEG_LEN))
+    // FIXME: calculate directly with KEEP, no need to mask off excessive tail
     val DATA_MASK = insert(((U(1) << (CONSUME_LEN * 8)) - 1).asBits.resize(8 * axisConfig.dataWidth))
     val KEEP_MASK = insert(((U(1) << CONSUME_LEN) - 1).asBits.resize(axisConfig.dataWidth))
 
     val hdrLeftNext = hdrLeft - CONSUME_LEN.resized
     when (up.isFiring) {
-      hdrLeft := hdrLeftNext
+      when (LAST) {
+        hdrLeft := maxHeaderLen
+      } otherwise {
+        hdrLeft := hdrLeftNext
+      }
     }
     val HDR_FULL        = insert(hdrLeftNext === 0)
     val HDR_PARTIAL     = insert(hdrLeftNext <= maxHeaderLen - minHeaderLen)
     val HDR_INCOMPLETE  = insert(hdrLeftNext > maxHeaderLen - minHeaderLen)
 
-    // store current header pointer for storing
+    // store current header pointer for storeHeader
     val HDR_LEFT = insert(hdrLeft)
   }
   import calculateShifts._
 
   val storeHeader = new pip.Ctrl(2) {
+    val hdrBuf = Reg(io.header.payload) init 0
+
     val MASKED_KEEP = insert(KEEP & ~(KEEP_MASK |<< SEG_OFF))
 
     val hdrFrag = ((DATA >> (SEG_OFF * 8)) & DATA_MASK).resize(maxHeaderLen * 8)
     val hdrFragShifted = hdrFrag |<< ((U(maxHeaderLen) - HDR_LEFT) * 8)
+    val HDR_OUT = insert(hdrBuf | hdrFragShifted)
 
-    // save header when completely assembled
     when (up.isFiring) {
-      io.header.payload := io.header.payload | hdrFragShifted
+      when (LAST) {
+        hdrBuf.clearAll()
+      } otherwise {
+        hdrBuf := HDR_OUT
+      }
     }
   }
   import storeHeader._
 
   val outputHeader = new pip.Ctrl(3) {
+    val hdrSent = Reg(Bool()) init False
+
     when (up.isValid && !hdrSent) {
       when(HDR_FULL || (HDR_PARTIAL && LAST)) {
         io.header.valid := True
+        io.header.payload := HDR_OUT
         when(!io.header.ready) {
           haltIt()
         } otherwise {
-          hdrLeft := maxHeaderLen
-          io.header.payload.clearAll()
           hdrSent := True
         }
       }
