@@ -70,7 +70,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
     val hdrLeft = Reg(UInt(headerLenWidth bits)) init maxHeaderLen
 
     val SEG_OFF = insert(CountTrailingZeroes(KEEP).resize(segmentLenWidth))
-    val SEG_LEN = insert(PopCount(KEEP).resize(segmentLenWidth))
+    val SEG_LEN = insert(CountOne(KEEP).resize(segmentLenWidth))
 
     val maskReq = ((U(1) << hdrLeft) - 1).asBits.resize(axisConfig.dataWidth)
     val maskAvail = KEEP >> SEG_OFF
