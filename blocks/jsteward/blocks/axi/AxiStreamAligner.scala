@@ -4,6 +4,7 @@ import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba4.axis._
 import spinal.lib.fsm._
+import spinal.lib.misc.pipeline._
 
 /**
  * For a stream that has a gap at the beginning, after process by [[AxiStreamExtractHeader]], shift the stream such
@@ -33,160 +34,116 @@ case class AxiStreamAligner(axisConfig: Axi4StreamConfig) extends Component {
   // AA AA AA xx xx xx xx xx
   // CC CC CC BB BB BB BB BB
 
-  // only valid during first beat
-  val toShiftFirstBeat = CountTrailingZeroes(io.input.keep).resize(log2Up(axisConfig.dataWidth))
-  // saved for all following beats
-  val toShiftSaved = Reg(toShiftFirstBeat)
-  // select which to use
-  val toShift = CombInit(toShiftFirstBeat)
-  val toShiftData = (toShift * 8).resize(log2Up(axisConfig.dataWidth * 8))
+  // we need CtrlApi to drop an empty tail
+  val pip = new StageCtrlPipeline
+  pip.ctrl(0).up.arbitrateFrom(io.input)
 
-  val shiftedBeat = io.output.payload.clone
-  // MSB ............... LSB
-  // xx xx xx xx xx AA AA AA
-  // BB BB BB BB BB CC CC CC
-  // FIXME: is this efficient enough, or do we need our own impl with two shifting?
-  shiftedBeat.data := io.input.data.rotateRight(toShiftData)
-  shiftedBeat.keep := io.input.keep.rotateRight(toShift)
+  val captureInput = new pip.Ctrl(0) {
+    val DATA = insert(io.input.data)
+    val KEEP = insert(io.input.keep)
+    val LAST = insert(io.input.last)
 
-  // head fragment to put into staging registers (AA AA AA)
-  val headDataMask = io.input.data.getAllTrue |>> toShiftData
-  val headKeepMask = io.input.keep.getAllTrue |>> toShift
-  val headBeat = io.output.payload.clone
-  headBeat.data := shiftedBeat.data & headDataMask
-  headBeat.keep := shiftedBeat.keep & headKeepMask
-  headBeat.last := False
+    // drop NULL beats
+    terminateWhen(KEEP === 0)
 
-  // tail fragment to put into staging registers (BB BB BB BB BB)
-  val tailDataMask = io.input.data.getAllTrue |<< ((axisConfig.dataWidth - toShift) * 8)
-  val tailKeepMask = io.input.keep.getAllTrue |<< (axisConfig.dataWidth - toShift)
-  val tailBeat = io.output.payload.clone
-  tailBeat.data := shiftedBeat.data & tailDataMask
-  tailBeat.keep := shiftedBeat.keep & tailKeepMask
-  tailBeat.last := False
-
-  // staging area for assembling output
-  val stagingBeats = Vec.fill(2)(Reg(io.output.payload))
-  val nextStaging = Reg(UInt(1 bit)) init 0
-  val nextFullBeat = io.output.payload.clone
-  nextFullBeat.data := stagingBeats(nextStaging).data & headDataMask | tailBeat.data
-  nextFullBeat.keep := stagingBeats(nextStaging).keep & headKeepMask | tailBeat.keep
-  nextFullBeat.last := False
-  // MSB ............... LSB
-  // before:
-  // .. .. .. .. .. AA AA AA <-- nextStaging
-  // .. .. .. .. .. .. .. ..
-  // after:
-  // BB BB BB BB BB AA AA AA
-  // .. .. .. .. .. CC CC CC <-- nextStaging
-
-  io.input.setBlocked()
-  io.output.setIdle()
-
-  // handle last -- two cases:
-  // - fewer bytes than fragment -- output staged beat as last
-  // - more bytes than fragment -- need one more beat as last
-
-  val fsm = new StateMachine {
-    val idle: State = new State with EntryPoint {
-      whenIsActive {
-        io.input.freeRun()
-        io.output.setIdle()
-        toShift := toShiftFirstBeat
-        // only react to beats not completely NULL
-        when(io.input.valid && io.input.keep =/= B(0)) {
-          toShiftSaved := toShift
-          // save stage beat but don't output yet since we don't have a full beat
-          stagingBeats(nextStaging) := headBeat
-          io.input.ready := True
-
-          when(io.input.last) {
-            // stream only has one beat -- output directly
-            headBeat.last := True
-            io.output.payload := headBeat
-            io.output.valid := True
-            when (!io.output.ready) {
-              goto(waitLast)
-            }
-          } otherwise {
-            goto(captureFragment)
-          }
-        }
-      }
+    val isFirst = Reg(Bool()) init True
+    when (down.isFiring) {
+      isFirst := LAST
     }
-    val captureFragment: State = new State {
-      whenIsActive {
-        toShift := toShiftSaved
-
-        when(io.input.valid) {
-          stagingBeats(nextStaging) := nextFullBeat
-          stagingBeats(1 - nextStaging) := headBeat
-          io.input.ready := True
-          // we now have a full beat, output directly and also save
-          io.output.payload := nextFullBeat
-
-          // did we save part of the last beat in the last cycle?
-          when(stagingBeats(nextStaging).last) {
-            // stall upstream when we had to inject one more beat
-            io.input.ready := False
-            nextFullBeat.last := True
-          }
-
-          when(io.input.last) {
-            when(headBeat.keep === B(0)) {
-              // we don't have tail to output, this is the last beat to downstream
-              nextFullBeat.last := True
-            } otherwise {
-              // another head beat left to output
-              headBeat.last := True
-            }
-          }
-          io.output.valid := True
-
-          when(nextFullBeat.last) {
-            when(!io.output.ready) {
-              goto(waitLast)
-            } otherwise {
-              goto(idle)
-            }
-          } otherwise {
-            when(!io.output.ready) {
-              // downstream stalled
-              goto(waitFragment)
-            } otherwise {
-              nextStaging := 1 - nextStaging
-              when(headBeat.last) {
-                goto(waitLast)
-              }
-            }
-          }
-        }
-      }
-    }
-    val waitFragment: State = new State {
-      whenIsActive {
-        // output registered value
-        io.output.payload := stagingBeats(nextStaging)
-        io.output.valid := True
-        when(io.output.ready) {
-          nextStaging := 1 - nextStaging
-          // did we save part of the last beat in the last cycle?
-          when(stagingBeats(1 - nextStaging).last) {
-            goto(waitLast)
-          } otherwise {
-            goto(captureFragment)
-          }
-        }
-      }
-    }
-    val waitLast: State = new State {
-      whenIsActive {
-        io.output.payload := stagingBeats(nextStaging)
-        io.output.valid := True
-        when(io.output.ready) {
-          goto(idle)
-        }
-      }
-    }
+    val FIRST = insert(isFirst)
+    val HEAD = insert(FIRST && !LAST)
+    val SINGLE = insert(FIRST && LAST)
+    val LAST_OF_MANY = insert(LAST && !FIRST)
   }
+  import captureInput._
+
+  val calculateShifts = new pip.Ctrl(1) {
+    val toShiftFirstBeat = CountTrailingZeroes(KEEP).resize(log2Up(axisConfig.dataWidth))
+    val toShift = CombInit(toShiftFirstBeat)
+    val toShiftSaved = Reg(toShift) init 0
+
+    when (up.isFiring) {
+      when (FIRST) {
+        toShiftSaved := toShift
+      } otherwise {
+        toShift := toShiftSaved
+      }
+    }
+
+    val TO_SHIFT_KEEP = insert(toShift)
+    val TO_SHIFT_DATA = insert((toShift * 8).resize(log2Up(axisConfig.dataWidth * 8)))
+  }
+  import calculateShifts._
+
+  val calculateHeadTail = new pip.Ctrl(2) {
+    // MSB ............... LSB
+    // xx xx xx xx xx AA AA AA
+    // BB BB BB BB BB CC CC CC
+    val shiftedKeep = KEEP.rotateRight(TO_SHIFT_KEEP)
+    val shiftedData = DATA.rotateRight(TO_SHIFT_DATA)
+
+    val HEAD_DATA_MASK = insert(io.input.data.getAllTrue |>> TO_SHIFT_DATA)
+    val HEAD_KEEP_MASK = insert(io.input.keep.getAllTrue |>> TO_SHIFT_KEEP)
+    val HEAD_DATA = insert(shiftedData & HEAD_DATA_MASK)
+    val HEAD_KEEP = insert(shiftedKeep & HEAD_KEEP_MASK)
+
+    val tailDataMask = io.input.data.getAllTrue |<< (U(axisConfig.dataWidth * 8) - TO_SHIFT_DATA)
+    val tailKeepMask = io.input.keep.getAllTrue |<< (U(axisConfig.dataWidth) - TO_SHIFT_KEEP)
+    val TAIL_DATA = insert(shiftedData & tailDataMask)
+    val TAIL_KEEP = insert(shiftedKeep & tailKeepMask)
+  }
+  import calculateHeadTail._
+
+  val assembleBeat = new pip.Ctrl(3) {
+    // holds staged HEAD_DATA/HEAD_KEEP from last beat
+    val stagingData = Reg(io.output.data) init 0
+    val stagingKeep = Reg(io.output.keep) init 0
+
+    val fullData = CombInit(stagingData & HEAD_DATA_MASK | TAIL_DATA)
+    val fullKeep = CombInit(stagingKeep & HEAD_KEEP_MASK | TAIL_KEEP)
+
+    when (up.isFiring) {
+      stagingData := HEAD_DATA
+      stagingKeep := HEAD_KEEP
+    }
+
+    when (up.isValid) {
+      when (HEAD) {
+        // kill first beat when not also LAST
+        terminateIt()
+      }
+    }
+
+    // handle LAST but header keep not 0: need one more beat
+    val duplicatedLast = Reg(Bool()) init False
+    duplicatedLast.clearWhen(duplicatedLast && down.isFiring)
+
+    val fullLast = CombInit[Bool](LAST)
+    when (up.isValid && LAST_OF_MANY && HEAD_KEEP =/= 0 && !duplicatedLast) {
+      // this beat is not LAST yet
+      fullLast := False
+      duplicateIt()
+      when (down.isFiring) {
+        duplicatedLast := True
+      }
+    }
+
+    when (fullLast && (duplicatedLast || SINGLE)) {
+      fullData := HEAD_DATA
+      fullKeep := HEAD_KEEP
+    }
+
+    val FULL_DATA = insert(fullData)
+    val FULL_KEEP = insert(fullKeep)
+    val FULL_LAST = insert(fullLast)
+  }
+  import assembleBeat._
+
+  val po = pip.ctrls.values.last.down
+  io.output.data := po(FULL_DATA)
+  io.output.keep := po(FULL_KEEP)
+  io.output.last := po(FULL_LAST)
+  po.arbitrateTo(io.output)
+
+  pip.build()
 }
