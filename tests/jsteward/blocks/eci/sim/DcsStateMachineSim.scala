@@ -40,7 +40,7 @@ case class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
   private var _locked = false
   private var _inTransition = false
 
-  private def log(msg: String) = println(s"DcsStateMachineSim $id: $msg")
+  private def log(msg: String) = println(s"DcsStateMachineSim $id\t: $msg")
 
   def dumpState(): Unit = {
     log(s"[${_state.name}] (${if (locked) "L" else "."}) ${if (state != Invalid) data.bytesToHex else ""}")
