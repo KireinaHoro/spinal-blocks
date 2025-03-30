@@ -39,11 +39,6 @@ class RegAllocatorFactory {
 
     trait FullAlloc {
       def apply(name: String, subName: String = "", idx: Int = 0, count: Int = 1, size: BigInt = defaultSize, readSensitive: Boolean = false, attr: AccessType = AccessType.RW, ty: String = ""): BigInt
-      def toGeneric = new RegBlockAlloc {
-        def apply(name: String, subName: String, readSensitive: Boolean, attr: AccessType, ty: String): BigInt = FullAlloc.this.apply(name, subName, readSensitive = readSensitive, attr = attr, ty = ty)
-        def block(name: String, subName: String, count: Int, readSensitive: Boolean, attr: AccessType) =
-          for (i <- 0 until count) yield FullAlloc.this.apply(name, subName, i, count, readSensitive = readSensitive, attr = attr)
-      }
     }
 
     def readBack(blockIdx: Int): RegBlockReadBack = {
@@ -282,4 +277,14 @@ class RegAllocatorFactory {
   }
 
   def clear(): Unit = blocks.clear()
+}
+
+object RegAllocatorFactory {
+  implicit def allocToGeneric(alloc: RegAllocatorFactory#RegBlock#FullAlloc): RegBlockAlloc = new RegBlockAlloc {
+    def apply(name: String, subName: String, readSensitive: Boolean, attr: AccessType, ty: String): BigInt =
+      alloc(name, subName, readSensitive = readSensitive, attr = attr, ty = ty)
+    def block(name: String, subName: String, count: Int, readSensitive: Boolean, attr: AccessType) =
+      for (i <- 0 until count)
+        yield alloc(name, subName, i, count, readSensitive = readSensitive, attr = attr)
+  }
 }
