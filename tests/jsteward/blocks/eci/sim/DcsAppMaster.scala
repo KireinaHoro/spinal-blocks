@@ -39,7 +39,7 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
   dcsOddAxiMaster.reset()
   dcsEvenAxiMaster.reset()
 
-  private def log(msg: String): Unit = println(s"DcsAppMaster: $msg")
+  private def log(msg: String): Unit = println(s"DcsAppMaster:\t$msg")
 
   def genLoadStore(addr: BigInt): ClLoadStore = {
     assert(addr % ECI_CL_SIZE_BYTES == 0, "address for cacheline not aligned")
