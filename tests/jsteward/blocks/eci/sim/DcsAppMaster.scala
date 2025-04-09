@@ -181,6 +181,35 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
     }
   }
 
+  /**
+    * Compare and swap **one byte** at the given address.  This is used to simulate the
+    * preempt critical region algorithm.
+    * @param addr byte address of the byte to operate on
+    * @param oldVal old value that is read out separately through [[read]]
+    * @param newVal new value to update into destination
+    * @return if the operation succeeded or not.
+    */
+  def casByte(addr: BigInt, oldVal: Int, newVal: Int): Boolean = {
+    val roundedAddr = roundAddr(addr)
+    val byteOffset = (addr - roundedAddr).toInt
+    val clState = findCl(aliasAddress(roundedAddr))
+
+    // upgrade to modified and check if value is same as old val
+    var ret = true
+    clState.modify { clData =>
+      if (clData(byteOffset) != oldVal) {
+        log(f"CAS $addr%#x failed!    old=$oldVal new=$newVal")
+        ret = false
+        clData
+      } else {
+        log(f"CAS $addr%#x succeeded! old=$oldVal new=$newVal")
+        clData.updated(byteOffset, newVal.toByte)
+      }
+    }
+
+    ret
+  }
+
   Seq(dcsEven, dcsOdd).zipWithIndex.foreach { case (dcs, idx) =>
     val respQueue = mutable.Queue[LclChannel => Unit]()
 
