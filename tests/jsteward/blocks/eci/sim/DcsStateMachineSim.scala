@@ -116,7 +116,10 @@ case class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
   private[sim] def memInProgress: Boolean = inRefill || inFlush
 
   private def transition(newState: EciClState)(body: EciClState => Unit) = {
-    assert(!inTransition, s"$id already in transition!")
+    if (inTransition) {
+      log("already in transition, waiting")
+      waitUntil(!inTransition)
+    }
     if (state != newState) {
       _inTransition = true
       log(s"${state.name} -> ${newState.name}")
