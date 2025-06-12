@@ -18,6 +18,8 @@ package object sim {
     def apply(idx: Int): Boolean = {
       (i & (1 << idx)) != 0
     }
+
+    implicit def toBigInt: BigInt = i
   }
 
   // choose element randomly from iterator
