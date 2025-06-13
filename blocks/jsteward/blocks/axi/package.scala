@@ -105,7 +105,9 @@ package object axi {
     }.ret
   }
 
-  // convert a spinal lib Axi4StreamConfig to verilog-axis format
+  /** Convert a spinal lib Axi4StreamConfig to verilog-axis format.  Specifically, if a bus is disabled,
+    * it should have width 1 instead of 0
+    */
   def mapToIntf(config: Axi4StreamConfig): Axi4StreamConfig =
     config.copy(
       useLast = true,
