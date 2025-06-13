@@ -53,5 +53,13 @@ class AxiStreamDemux(
     renameAxi4StreamIO(alwaysAddT = true)
   }
 
+  // tie off drop and select when TDEST_ROUTE is enabled
+  Component.current.parent.rework {
+    if (tdestRoute) {
+      io.drop := False
+      io.select := 0
+    }
+  }
+
   addRTLPath(axisRTLFile(modName))
 }
