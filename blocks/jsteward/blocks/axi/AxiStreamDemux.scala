@@ -40,7 +40,7 @@ class AxiStreamDemux(
 
     val enable = in Bool()
     val drop = in Bool()
-    val select = in Bits(log2Up(numMasterPorts) bits)
+    val select = in UInt(log2Up(numMasterPorts) bits)
   }
 
   val s_axis = new DriveMissing(Axi4Stream(slaveAxisConfig), slave(Axi4Stream(slaveIntfAxisConfig)))
