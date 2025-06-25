@@ -75,6 +75,18 @@ package object axi {
   }
 
   implicit class RichAxi4(axi: Axi4) {
+    def queue(depth: Int): Axi4 = {
+      val ret = Axi4(axi.config)
+      ret.aw << axi.aw.queue(depth)
+      ret.w << axi.w
+      ret.b >> axi.b
+
+      ret.ar << axi.ar.queue(depth)
+      ret.r >> axi.r
+
+      ret
+    }
+
     def fullPipe(): Axi4 = axi.pipelined(
       aw = StreamPipe.FULL,
       ar = StreamPipe.FULL,
