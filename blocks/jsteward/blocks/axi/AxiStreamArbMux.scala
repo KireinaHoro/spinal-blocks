@@ -13,6 +13,7 @@ class AxiStreamArbMux(
                      arbLsbHighPriority: Boolean = true,
                      ) extends BlackBox {
   assert(clockDomain.config.resetKind == SYNC, "verilog-axi requires")
+  assert(numSlavePorts > 1, "unable to generate mux with only one input")
 
   val masterAxisConfig = if (updateTid) axisConfig.copy(idWidth = axisConfig.idWidth + log2Up(numSlavePorts)) else axisConfig
   val intfAxisConfig = mapToIntf(axisConfig)
