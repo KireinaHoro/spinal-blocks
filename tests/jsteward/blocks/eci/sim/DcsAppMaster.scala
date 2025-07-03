@@ -58,7 +58,7 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
       def store(d: List[Byte]): Unit = {
         log(f"DCS store: addr $addr%#x (aliased $aliased%#x) <- ${d.bytesToHex}")
         assert(d.length == ECI_CL_SIZE_BYTES, s"cache-line flush length ${d.length} does not match cacheline size ${ECI_CL_SIZE_BYTES}")
-        dcs.write(aliased, d)
+        dcs.write(aliased, d, maxLen = 1)
       }
     }
   }
