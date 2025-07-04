@@ -43,21 +43,26 @@ case class AxiDmaConfig(axiConfig: Axi4Config,
                         lenWidth: Int = 20,
                         tagWidth: Int = 8) {
   val intfAxisConfig = mapToIntf(axisConfig)
+
   val readDescConfig = Axi4StreamCustomConfig.fromStreamConfig(
     payloadType = AxiDmaCmd(this),
-    config = intfAxisConfig.copy(useLast = false)
+    config = axisConfig.copy(useLast = false)
   )
+  val intfReadDescConfig = mapToIntf(readDescConfig)
 
   def readDescBus = Axi4StreamCustom(readDescConfig)
+  def readDescBusIntf = Axi4StreamCustom(intfReadDescConfig)
 
   def readDescStatusBus = Flow(AxiDmaReadDescStatus(this))
 
   val writeDescConfig = Axi4StreamCustomConfig.fromStreamConfig(
     payloadType = AxiDmaCmd(this),
-    config = intfAxisConfig.copy(useLast = false, useDest = false, useUser = false, useId = false)
+    config = axisConfig.copy(useLast = false, useDest = false, useUser = false, useId = false)
   )
+  val intfWriteDescConfig = mapToIntf(writeDescConfig)
 
   def writeDescBus = Axi4StreamCustom(writeDescConfig)
+  def writeDescBusIntf = Axi4StreamCustom(intfWriteDescConfig)
 
   def writeDescStatusBus = Flow(AxiDmaWriteDescStatus(this))
 }
@@ -102,12 +107,6 @@ class AxiDma(dmaConfig: AxiDmaConfig,
     val clk = in Bool()
     val rst = in Bool()
 
-    val s_axis_read_desc = slave(dmaConfig.readDescBus)
-    val m_axis_read_desc_status = master(dmaConfig.readDescStatusBus)
-
-    val s_axis_write_desc = slave(dmaConfig.writeDescBus)
-    val m_axis_write_desc_status = master(dmaConfig.writeDescStatusBus)
-
     val m_axi = master(Axi4(axiConfig))
 
     val read_enable = in Bool()
@@ -117,8 +116,13 @@ class AxiDma(dmaConfig: AxiDmaConfig,
   val m_axis_read_data = new DriveMissing(Axi4Stream(dmaConfig.axisConfig), master(Axi4Stream(dmaConfig.intfAxisConfig)))
   val s_axis_write_data = new DriveMissing(Axi4Stream(dmaConfig.axisConfig), slave(Axi4Stream(dmaConfig.intfAxisConfig)))
 
-  mapCurrentClockDomain(io.clk, io.rst)
+  val s_axis_read_desc = new DriveMissing(dmaConfig.readDescBus, slave(dmaConfig.readDescBusIntf))
+  val m_axis_read_desc_status = master(dmaConfig.readDescStatusBus)
 
+  val s_axis_write_desc = new DriveMissing(dmaConfig.writeDescBus, slave(dmaConfig.writeDescBusIntf))
+  val m_axis_write_desc_status = master(dmaConfig.writeDescStatusBus)
+
+  mapCurrentClockDomain(io.clk, io.rst)
   noIoPrefix()
 
   addPrePopTask { () =>

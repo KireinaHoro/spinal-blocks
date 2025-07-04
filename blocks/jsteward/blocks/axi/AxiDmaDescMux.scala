@@ -1,6 +1,6 @@
 package jsteward.blocks.axi
 
-import jsteward.blocks.misc.RichBundle
+import jsteward.blocks.misc.{DriveMissing, DriveMissingVec, RichBundle}
 import spinal.core._
 import spinal.lib._
 import spinal.lib.io.InOutVecToBits
@@ -36,20 +36,17 @@ class AxiDmaDescMux(
   val modName = "axi_dma_desc_mux"
   setBlackBoxName(modName)
 
-  val io = new Bundle {
-    val clk = in Bool()
-    val rst = in Bool()
+  val clk = in Bool()
+  val rst = in Bool()
 
-    // to get all the ports for both read and write
-    val m_axis_desc = master(masterDmaConfig.readDescBus)
-    val s_axis_desc_status = slave(masterDmaConfig.writeDescStatusBus)
-  }
-
-  val s_axis_desc = new InOutVecToBits(slave(readDescBus), numPorts)
+  val s_axis_desc = new DriveMissingVec(readDescBus, slave(readDescBusIntf), numPorts)
   val m_axis_desc_status = new InOutVecToBits(master(writeDescStatusBus), numPorts)
 
-  mapCurrentClockDomain(io.clk, io.rst)
-  noIoPrefix()
+  // to get all the ports for both read and write
+  val m_axis_desc = new DriveMissing(masterDmaConfig.readDescBus, master(masterDmaConfig.readDescBusIntf))
+  val s_axis_desc_status = slave(masterDmaConfig.writeDescStatusBus)
+
+  mapCurrentClockDomain(clk, rst)
 
   addPrePopTask { () =>
     renameAxi4StreamIO()
@@ -60,19 +57,19 @@ class AxiDmaDescMux(
   addRTLPath(axiRTLFile("priority_encoder"))
 
   def connectRead(dma: AxiDma) {
-    dma.io.s_axis_read_desc.translateFrom(io.m_axis_desc) { case (left, right) =>
+    dma.s_axis_read_desc.translateFrom(m_axis_desc) { case (left, right) =>
       // only allow resizing USER field
       left.elements zip right.elements foreach { case (leftElem, rightElem) =>
         if (leftElem._1 == "user") leftElem._2 := rightElem._2.resized
         else leftElem._2 := rightElem._2
       }
     }
-    io.s_axis_desc_status <<? dma.io.m_axis_read_desc_status
+    s_axis_desc_status <<? dma.m_axis_read_desc_status
   }
 
   def connectWrite(dma: AxiDma) {
     // write desc port does not have id, dest, user
-    dma.io.s_axis_write_desc.translateFrom(io.m_axis_desc)(_ <<? _)
-    io.s_axis_desc_status << dma.io.m_axis_write_desc_status
+    dma.s_axis_write_desc.translateFrom(m_axis_desc)(_ <<? _)
+    s_axis_desc_status << dma.m_axis_write_desc_status
   }
 }

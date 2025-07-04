@@ -1,16 +1,13 @@
 package jsteward.blocks
 
-import axi.Axi4StreamCustom.Axi4StreamCustom
 import jsteward.blocks.misc._
 import spinal.core._
-import spinal.lib
 import spinal.lib._
 import spinal.lib.bus.amba4.axi._
 import spinal.lib.bus.amba4.axilite.AxiLite4
-import spinal.lib.bus.amba4.axis.{Axi4Stream, Axi4StreamConfig}
+import spinal.lib.bus.amba4.axis.Axi4StreamConfig
 import spinal.lib.bus.amba4.axis.Axi4Stream.Axi4Stream
 
-import scala.collection.mutable
 import scala.language.postfixOps
 
 package object axi {
@@ -124,6 +121,17 @@ package object axi {
     config.copy(
       useLast = true,
       useKeep = true,
+      useId = true,
+      idWidth = if (config.useId) config.idWidth else 1,
+      useDest = true,
+      destWidth = if (config.useDest) config.destWidth else 1,
+      useUser = true,
+      userWidth = if (config.useUser) config.userWidth else 1,
+    )
+
+  def mapToIntf[T <: Data](config: Axi4StreamCustomConfig[T]): Axi4StreamCustomConfig[T] =
+    config.copy(
+      useLast = true,
       useId = true,
       idWidth = if (config.useId) config.idWidth else 1,
       useDest = true,
