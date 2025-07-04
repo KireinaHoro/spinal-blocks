@@ -65,14 +65,17 @@ abstract class DutSimFunSuite[T <: Component] extends FixtureAnyFunSuite with Be
     var outcome: Outcome = Succeeded
 
     try {
+      val reproduceCmd = s"mill gen.test.testOnly ${getClass.getCanonicalName} -- -t \"${test.name}\" -DsetupSeed=$setupSeed -DsimSeed=$lseed -DprintSimLog=true\n"
       Console.withOut(printStream) {
         // write simulation log to a file
         println(s">>>>> Simulation transcript ${getClass.getCanonicalName} for test ${test.name}")
-        println(s">>>>> To reproduce: mill gen.test.testOnly ${getClass.getCanonicalName} -- -t \"${test.name}\" -DsetupSeed=$setupSeed -DsimSeed=$lseed -DprintSimLog=true\n")
+        println(s">>>>> To reproduce: $reproduceCmd")
 
         dut.doSim(test.name) { dut =>
           withFixture(test.toNoArgTest(dut)) match {
-            case Failed(e) => throw e
+            case Failed(e) =>
+              System.out.println(s"\n!!! Test failed, reproducer: $reproduceCmd")
+              throw e
             case _ =>
           }
         }
