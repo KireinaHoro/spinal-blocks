@@ -131,7 +131,6 @@ package object axi {
 
   def mapToIntf[T <: Data](config: Axi4StreamCustomConfig[T]): Axi4StreamCustomConfig[T] =
     config.copy(
-      useLast = true,
       useId = true,
       idWidth = if (config.useId) config.idWidth else 1,
       useDest = true,

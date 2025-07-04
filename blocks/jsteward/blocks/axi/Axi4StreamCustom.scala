@@ -4,6 +4,7 @@ import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba4.axis.Axi4StreamConfig
 
+import scala.language.postfixOps
 import scala.reflect.{ClassTag, classTag}
 
 /**
@@ -13,7 +14,6 @@ import scala.reflect.{ClassTag, classTag}
  * @param idWidth     Width of the ID field in bits
  * @param destWidth   Width of the Destination field in bits
  * @param userWidth   Width of the User field in bits
- * @param useLast     Use last bit
  * @param useId       Use ID field, must specify idWidth
  * @param useDest     Use Destination field, must specify destWidth
  * @param useUser     Use User field, must specify userWidth
@@ -22,7 +22,6 @@ case class Axi4StreamCustomConfig[T <: Data](payloadType: HardType[T],
                                              idWidth: Int = -1,
                                              destWidth: Int = -1,
                                              userWidth: Int = -1,
-                                             useLast: Boolean = false,
                                              useId: Boolean = false,
                                              useDest: Boolean = false,
                                              useUser: Boolean = false)
@@ -34,7 +33,6 @@ object Axi4StreamCustomConfig {
       config.idWidth,
       config.destWidth,
       config.userWidth,
-      config.useLast,
       config.useId,
       config.useDest,
       config.useUser,
@@ -46,12 +44,9 @@ object Axi4StreamCustom {
 
   case class Axi4StreamCustomBundle[T <: Data](val config: Axi4StreamCustomConfig[T]) extends Bundle {
     val payload = config.payloadType()
-    val id = (config.useId) generate UInt(config.idWidth bit)
-    val last = (config.useLast) generate Bool()
-    val dest = (config.useDest) generate UInt(config.destWidth bit)
-    val user = (config.useUser) generate Bits(config.userWidth bit)
-
-    def isLast = if (this.last != null) this.last else False
+    val id = (config.useId) generate UInt(config.idWidth bits)
+    val dest = (config.useDest) generate UInt(config.destWidth bits)
+    val user = (config.useUser) generate Bits(config.userWidth bits)
 
     override def clone: Axi4StreamCustomBundle[T] = Axi4StreamCustomBundle(config)
 
@@ -68,7 +63,6 @@ object Axi4StreamCustom {
 
           this.payload := that.payload.resized
           Axi4StreamCustomBundlePriv.driveWeak(that, this, that.id, this.id, () => U(this.id.bitsRange -> false), allowResize = true, allowDrop = false)
-          Axi4StreamCustomBundlePriv.driveWeak(that, this, that.last, this.last, () => False, allowResize = false, allowDrop = false)
           Axi4StreamCustomBundlePriv.driveWeak(that, this, that.dest, this.dest, () => B(this.dest.bitsRange -> true), allowResize = true, allowDrop = false)
 
           (this.user != null, that.user != null) match {
@@ -105,65 +99,6 @@ object Axi4StreamCustom {
         axisStream.payload.payload := data
         axisStream.arbitrationFrom(source)
         axisStream
-    }
-  }
-
-  implicit class Axi4StreamCustomRich[T <: Data](stream: Stream[Axi4StreamCustomBundle[T]]) {
-
-    def lastFire: Bool = stream.isLast && stream.fire
-
-    /**
-     * Converts the Axi4StreamCustom into a Stream of the payload type.
-     * Does not support TSTRB or TKEEP. Will only convert continuous and aligned streams.
-     * If TLAST was present it will be dropped. Consider toStreamFragment
-     *
-     * @return Stream of payload
-     */
-    def toDataStream(): Stream[T] = {
-      val that = Stream(stream.config.payloadType)
-      if (stream.config.useLast)
-        SpinalWarning(s"Axi4Stream $this converted to Stream of ${that.payloadType} discards TLAST. Consider using toFragmentStream instead.")
-
-      that.arbitrationFrom(stream)
-      that.payload := stream.payload.payload
-
-      that
-    }
-
-    /**
-     * Results a Flow of TID. To be used with toStream functions.
-     *
-     * @return Flow of Axi4Stream TID field
-     */
-    def getIdFlow(): Flow[UInt] = {
-      val idFlow = Flow(if (stream.id != null) stream.id else UInt(0 bit))
-      idFlow.valid := stream.valid
-      idFlow.payload := stream.id
-      idFlow
-    }
-
-    /**
-     * Results a Flow of TDEST. To be used with toStream functions.
-     *
-     * @return Flow of Axi4Stream TDEST field
-     */
-    def getDestFlow(): Flow[UInt] = {
-      val destFlow = Flow(if (stream.dest != null) stream.dest else UInt(0 bit))
-      destFlow.valid := stream.valid
-      destFlow.payload := stream.dest
-      destFlow
-    }
-
-    /**
-     * Results a Flow of TUSER. To be used with toStream functions.
-     *
-     * @return Flow of Axi4Stream TUSER field
-     */
-    def getUserFlow(): Flow[Bits] = {
-      val userFlow = Flow(if (stream.user != null) stream.user else Bits(0 bit))
-      userFlow.valid := stream.valid
-      userFlow.payload := stream.user
-      userFlow
     }
   }
 }

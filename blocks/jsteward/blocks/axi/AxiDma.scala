@@ -46,7 +46,7 @@ case class AxiDmaConfig(axiConfig: Axi4Config,
 
   val readDescConfig = Axi4StreamCustomConfig.fromStreamConfig(
     payloadType = AxiDmaCmd(this),
-    config = axisConfig.copy(useLast = false)
+    config = axisConfig,
   )
   val intfReadDescConfig = mapToIntf(readDescConfig)
 
@@ -55,15 +55,7 @@ case class AxiDmaConfig(axiConfig: Axi4Config,
 
   def readDescStatusBus = Flow(AxiDmaReadDescStatus(this))
 
-  val writeDescConfig = Axi4StreamCustomConfig.fromStreamConfig(
-    payloadType = AxiDmaCmd(this),
-    config = axisConfig.copy(useLast = false, useDest = false, useUser = false, useId = false)
-  )
-  val intfWriteDescConfig = mapToIntf(writeDescConfig)
-
-  def writeDescBus = Axi4StreamCustom(writeDescConfig)
-  def writeDescBusIntf = Axi4StreamCustom(intfWriteDescConfig)
-
+  def writeDescBus = Stream(AxiDmaCmd(this))
   def writeDescStatusBus = Flow(AxiDmaWriteDescStatus(this))
 }
 
@@ -119,7 +111,7 @@ class AxiDma(dmaConfig: AxiDmaConfig,
   val s_axis_read_desc = new DriveMissing(dmaConfig.readDescBus, slave(dmaConfig.readDescBusIntf))
   val m_axis_read_desc_status = master(dmaConfig.readDescStatusBus)
 
-  val s_axis_write_desc = new DriveMissing(dmaConfig.writeDescBus, slave(dmaConfig.writeDescBusIntf))
+  val s_axis_write_desc = slave(dmaConfig.writeDescBus)
   val m_axis_write_desc_status = master(dmaConfig.writeDescStatusBus)
 
   mapCurrentClockDomain(io.clk, io.rst)
