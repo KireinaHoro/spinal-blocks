@@ -5,6 +5,8 @@ import spinal.lib._
 import spinal.lib.bus.amba4.axis._
 import spinal.lib.misc.pipeline._
 
+import scala.language.postfixOps
+
 /**
  * Extract (up to) the first [[maxHeaderLen]] bytes from an [[Axi4Stream]]; these bytes will be stripped from the output
  * stream.  Assumes that any NULL bytes are only present at the beginning of the stream.  This module is intended to be chained.
@@ -48,7 +50,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
   // we shouldn't output completely NULL beats
   assert(!io.output.valid || io.output.keep =/= 0, "output should not have NULL beats")
   // we also do not handle completely NULL beats
-  assert(!io.input.valid || io.input.keep =/= 0, "input should have NULL beats")
+  assert(!io.input.valid || io.input.keep =/= 0, "input should not have NULL beats")
 
   io.header.setIdle()
 
@@ -59,14 +61,11 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
   val pip = new StageCtrlPipeline
   pip.ctrl(0).up.arbitrateFrom(io.input)
 
-  val captureInput = new pip.InsertArea {
+  val calculateShifts = new pip.Ctrl(0) {
     val DATA = insert(io.input.data)
     val KEEP = insert(io.input.keep)
     val LAST = insert(io.input.last)
-  }
-  import captureInput._
 
-  val calculateShifts = new pip.Ctrl(1) {
     val hdrLeft = Reg(UInt(headerLenWidth bits)) init maxHeaderLen
 
     val SEG_OFF = insert(CountTrailingZeroes(KEEP).resize(segmentLenWidth))
@@ -96,7 +95,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
   }
   import calculateShifts._
 
-  val storeHeader = new pip.Ctrl(2) {
+  val storeHeader = new pip.Ctrl(1) {
     val hdrBuf = Reg(io.header.payload) init 0
 
     val MASKED_KEEP = insert(KEEP & ~(KEEP_MASK |<< SEG_OFF))
@@ -115,7 +114,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
   }
   import storeHeader._
 
-  val outputHeader = new pip.Ctrl(3) {
+  val outputHeader = new pip.Ctrl(2) {
     val hdrSent = Reg(Bool()) init False
 
     when (up.isValid && !hdrSent) {
@@ -147,7 +146,9 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
     terminateWhen(BEAT_CONSUMED)
   }
 
-  new pip.Ctrl(4)
+  // insert one extra stage to make sure output is delayed by one cycle after header;
+  // this also interrupts timing paths
+  new pip.Ctrl(3)
 
   val po = pip.ctrls.values.last.down
 
