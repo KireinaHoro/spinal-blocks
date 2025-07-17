@@ -67,9 +67,9 @@ object EciCmdDefs {
     cli
   }
 
-  def aliasAddress(addr: UInt): Bits = aliasCachelineIndex(addr.asBits(39 downto 7)) ## B(0, 7 bits)
+  def aliasAddress(addr: Bits): Bits = aliasCachelineIndex(addr.asBits(39 downto 7)) ## B(0, 7 bits)
 
-  def unaliasAddress(addr: Bits): UInt = unaliasCachelineIndex(addr(39 downto 7)).asUInt @@ U(0, 7 bits)
+  def unaliasAddress(addr: Bits): Bits = unaliasCachelineIndex(addr(39 downto 7)) ## U(0, 7 bits)
 }
 
 import jsteward.blocks.eci.EciCmdDefs._
