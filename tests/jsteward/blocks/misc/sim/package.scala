@@ -86,8 +86,11 @@ package object sim {
   }
 
   def hexToBytesBE(bytes: String): List[Byte] = bytes.grouped(2).map(Integer.parseInt(_, 16).toByte).toList
-  def intToBytesBE[T](a: T, len: Int = 4)(implicit tr: T => LiteralRicher, n: Numeric[T]): List[Byte] = {
-    assert(len <= 8, "cannot convert longer than Long")
+  def intToBytesBE[T](a: T)(implicit n: Numeric[T]): List[Byte] = {
+    val len = a match {
+      case _: Int => 4
+      case _: Long => 8
+    }
     val al = n.toLong(a)
     val v = if (len == 8) al else {
       al & ((1L << (len * 8)) - 1)
@@ -96,5 +99,12 @@ package object sim {
       .reverse                        // so that we can pad zero at MSB
       .padTo(len, 0.toByte).take(len) // so that we have always len bytes
       .reverse.toList                 // restore the original big endianness from toByteArray
+  }
+
+  def intToBytesLE[T](a: T)(implicit n: Numeric[T]): List[Byte] = intToBytesBE(a).reverse
+
+  implicit class IntRicherEndianAware[T](v: T)(implicit n: Numeric[T]) {
+    def toBytesLE = intToBytesLE(v)
+    def toBytesBE = intToBytesBE(v)
   }
 }
