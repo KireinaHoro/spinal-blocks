@@ -159,4 +159,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
   po.arbitrateTo(io.output)
 
   pip.build()
+
+  // allow better floor-planning
+  addAttribute("keep_hierarchy", "TRUE")
 }
