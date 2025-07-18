@@ -86,12 +86,10 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
         hdrLeft := hdrLeftNext
       }
     }
-    val HDR_FULL        = insert(hdrLeftNext === 0)
-    val HDR_PARTIAL     = insert(hdrLeftNext > 0 && hdrLeftNext <= maxHeaderLen - minHeaderLen)
-    val HDR_INCOMPLETE  = insert(hdrLeftNext > maxHeaderLen - minHeaderLen)
 
     // store current header pointer for storeHeader
     val HDR_LEFT = insert(hdrLeft)
+    val HDR_LEFT_NEXT = insert(hdrLeftNext)
   }
   import calculateShifts._
 
@@ -111,6 +109,11 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
         hdrBuf := HDR_OUT
       }
     }
+
+    val hdrVariableLen = maxHeaderLen - minHeaderLen
+    val HDR_FULL        = insert(HDR_LEFT_NEXT === 0)
+    val HDR_PARTIAL     = insert(HDR_LEFT_NEXT > 0 && HDR_LEFT_NEXT <= hdrVariableLen)
+    val HDR_INCOMPLETE  = insert(HDR_LEFT_NEXT > hdrVariableLen)
   }
   import storeHeader._
 
