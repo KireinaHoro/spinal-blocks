@@ -148,8 +148,6 @@ class RegAllocatorFactory {
     mackerelTypeDefs += MackerelTypeDef(ty, defs, target)
   }
   def writeMackerel(outDir: os.Path, prefix: String): Unit = {
-    // TODO: allow specifying name and description (instead of hard-coding PIONIC)
-
     val blockDefs = mutable.Map[String, StringBuilder]()
 
     mackerelTypeDefs.foreach { case MackerelTypeDef(_, d, target) =>
