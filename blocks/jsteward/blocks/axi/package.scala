@@ -84,13 +84,17 @@ package object axi {
       ret
     }
 
-    def fullPipe(): Axi4 = axi.pipelined(
-      aw = StreamPipe.FULL,
-      ar = StreamPipe.FULL,
-      w = StreamPipe.FULL,
-      r = StreamPipe.FULL,
-      b = StreamPipe.FULL,
-    )
+    def fullPipe(levels: Int = 1): Axi4 = {
+      assert(levels >= 1)
+      val p = axi.pipelined(
+        aw = StreamPipe.FULL,
+        ar = StreamPipe.FULL,
+        w = StreamPipe.FULL,
+        r = StreamPipe.FULL,
+        b = StreamPipe.FULL,
+      )
+      if (levels == 1) p else p.fullPipe(levels - 1)
+    }
 
     def remapAddr(f: UInt => UInt): Axi4 = new Composite(axi, "remapped") {
       val ret = Axi4(axi.config)
