@@ -1,7 +1,10 @@
 package jsteward.blocks
 
 import spinal.core._
+import spinal.lib.StreamPipe.FULL
 import spinal.lib._
+
+import scala.language.postfixOps
 
 package object misc {
   def checkParam[T](v: T)(candidates: T*): Unit = {
@@ -48,6 +51,12 @@ package object misc {
       }
       ret
     }
+
+    def farPipe(levels: Int = 3): Stream[T] = new Composite(s, "farPipe") {
+      assert(levels >= 1)
+      val p = s.pipelined(FULL)
+      val ret = if (levels == 1) p else p.farPipe(levels - 1)
+    }.ret
   }
 
   object StreamDispatcherWithEnable {
