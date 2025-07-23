@@ -84,7 +84,10 @@ case class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
    */
   private[sim] def lock(): Unit = {
     assert(Seq(Invalid, Shared).contains(state))
-    assert(!locked, s"trying to lock $id that's already locked")
+    if (locked) {
+      log("already locked, waiting")
+      waitUntil(!locked)
+    }
     _locked = true
     log("locked")
   }
