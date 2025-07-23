@@ -129,6 +129,9 @@ case class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
       _state = newState
       dumpState()
       _inTransition = false
+    } else {
+      // call any possible log functions
+      body(state)
     }
   }
 
@@ -160,7 +163,7 @@ case class DcsStateMachineSim(id: String, loadStore: ClLoadStore) {
     transition(Shared) {
       case Invalid => doRefill()
       case Modified => doFlush()
-      case _ =>
+      case _ => log("cache hit")
     }
   }
 
