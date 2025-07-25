@@ -41,12 +41,25 @@ case class AxiStreamInjectHeader(axisConfig: Axi4StreamConfig, headerLen: Int) e
   val segmentLenWidth = log2Up(axisConfig.dataWidth) + 1
 
   val outHeaderOff, outHeaderLen = Reg(UInt(headerLenWidth bits)) init 0
-  val toFill = Reg(UInt(segmentLenWidth bits)) init 0
+  val firstBeatGap = Reg(UInt(segmentLenWidth bits)) init 0
 
-  val hdrBuffered = Reg(Bits(headerWidth bits))
-  val firstBeatBuffered, outBuffered = Reg(Bits(beatWidth bits))
+  val headerBuffered = Reg(Bits(headerWidth bits))
+  val firstBeatBuffered = Reg(Bits(beatWidth bits))
   val firstKeepBuffered = Reg(Bits(axisConfig.dataWidth bits))
   val firstLastBuffered = Reg(Bool())
+
+  val headerFrag, lastHeaderFrag = Bits(beatWidth bits)
+  val headerFragMask, lastHeaderFragMask = Bits(axisConfig.dataWidth bits)
+  val lastHeaderToShift = UInt(segmentLenWidth bits)
+
+  headerFragMask := ((U(1, axisConfig.dataWidth bits) |<< outHeaderLen) - 1).asBits
+  headerFrag := headerBuffered.resize(beatWidth)
+
+  // header buffer always shifted against LSB
+  // TODO: break into multiple states
+  lastHeaderToShift := firstBeatGap - outHeaderLen
+  lastHeaderFragMask := headerFragMask |<< lastHeaderToShift
+  lastHeaderFrag := headerFrag |<< (lastHeaderToShift * 8)
 
   def selectWithByteMask(data: Bits, byteEnable: Bits): Bits = new Composite(data, "masked") {
     val ret = data.clone()
@@ -66,9 +79,14 @@ case class AxiStreamInjectHeader(axisConfig: Axi4StreamConfig, headerLen: Int) e
   val fsm = new StateMachine {
     val idle: State = new State with EntryPoint {
       whenIsActive {
+        firstBeatBuffered := 0
+        firstKeepBuffered := 0
+        firstLastBuffered := False
+        headerBuffered := 0
+
         io.header.ready := True
         when (io.header.valid) {
-          hdrBuffered := io.header.payload
+          headerBuffered := io.header.payload
           goto(captureFirstBeat)
         }
       }
@@ -79,7 +97,7 @@ case class AxiStreamInjectHeader(axisConfig: Axi4StreamConfig, headerLen: Int) e
         when (io.input.valid) {
           // calculate and store shifts
           val dataBeatGap = CountTrailingZeroes(io.input.keep).resize(segmentLenWidth)
-          toFill := dataBeatGap
+          firstBeatGap := dataBeatGap
           outHeaderOff := 0
 
           firstBeatBuffered := maskedInput
@@ -101,16 +119,13 @@ case class AxiStreamInjectHeader(axisConfig: Axi4StreamConfig, headerLen: Int) e
     val outputFirstDataBeat = new State {
       whenIsActive {
         assert(outHeaderOff + outHeaderLen === headerLen, "did not consume the entire header")
-        assert(toFill >= outHeaderLen, "too much header left over")
+        assert(firstBeatGap >= outHeaderLen, "too much header left, does not fit inside gap of first beat")
 
-        // header buffer always shifted against LSB
-        // TODO: break into multiple states
-        val leftGap = toFill - outHeaderLen
-        val headerChunkMask = ((U(1, axisConfig.dataWidth bits) |<< outHeaderLen) - 1).asBits |<< leftGap
-        val headerChunk = (hdrBuffered |<< (leftGap * 8)).resize(beatWidth)
+        // we need to check this since we are OR-ing with first beat data
+        assert(selectWithByteMask(lastHeaderFrag, lastHeaderFragMask) === lastHeaderFrag, "garbage left over on MSB")
 
-        io.output.data := firstBeatBuffered | headerChunk
-        io.output.keep := firstKeepBuffered | headerChunkMask
+        io.output.data := firstBeatBuffered | lastHeaderFrag
+        io.output.keep := firstKeepBuffered | lastHeaderFragMask
         io.output.last := firstLastBuffered
         io.output.valid := True
 
@@ -125,22 +140,19 @@ case class AxiStreamInjectHeader(axisConfig: Axi4StreamConfig, headerLen: Int) e
     }
     val outputHeaderBeats = new State {
       whenIsActive {
-        val headerChunkMask = ((U(1, axisConfig.dataWidth bits) |<< outHeaderLen) - 1).asBits
-        val headerChunk = hdrBuffered.resize(beatWidth)
-
-        io.output.data := headerChunk
-        io.output.keep := headerChunkMask
+        io.output.data := headerFrag
+        io.output.keep := headerFragMask
         io.output.last := False
         io.output.valid := True
 
         when (io.output.ready) {
           val newOff = outHeaderOff + outHeaderLen
           outHeaderOff := newOff
-          hdrBuffered := hdrBuffered >> outHeaderLen
+          headerBuffered := headerBuffered >> outHeaderLen
 
           val hdrLeft = headerLen - newOff
-          assert((hdrLeft - toFill) % axisConfig.dataWidth === 0, "length calculation error")
-          when (hdrLeft === toFill) {
+          assert((hdrLeft - firstBeatGap) % axisConfig.dataWidth === 0, "length calculation error")
+          when (hdrLeft === firstBeatGap) {
             outHeaderLen := hdrLeft
             goto(outputFirstDataBeat)
           } otherwise {
