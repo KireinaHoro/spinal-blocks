@@ -148,7 +148,7 @@ case class AxiStreamInjectHeader(axisConfig: Axi4StreamConfig, headerLen: Int) e
         when (io.output.ready) {
           val newOff = outHeaderOff + outHeaderLen
           outHeaderOff := newOff
-          headerBuffered := headerBuffered >> outHeaderLen
+          headerBuffered := headerBuffered >> (outHeaderLen * 8)
 
           val hdrLeft = headerLen - newOff
           assert((hdrLeft - firstBeatGap) % axisConfig.dataWidth === 0, "length calculation error")
