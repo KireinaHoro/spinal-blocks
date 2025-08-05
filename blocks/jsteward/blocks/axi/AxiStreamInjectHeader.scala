@@ -43,6 +43,7 @@ case class AxiStreamInjectHeader(axisConfig: Axi4StreamConfig, headerLen: Int) e
   val outHeaderOff, outHeaderLen = Reg(UInt(headerLenWidth bits)) init 0
   val outHeaderOffNext = outHeaderOff + outHeaderLen
   val firstBeatGap = Reg(UInt(segmentLenWidth bits)) init 0
+  val firstBeatGapNext = CountTrailingZeroes(io.input.keep).resize(segmentLenWidth)
 
   val headerBuffered = Reg(Bits(headerWidth bits))
   val firstBeatBuffered = Reg(Bits(beatWidth bits))
@@ -85,6 +86,9 @@ case class AxiStreamInjectHeader(axisConfig: Axi4StreamConfig, headerLen: Int) e
         firstLastBuffered := False
         headerBuffered := 0
 
+        outHeaderOff := 0
+        outHeaderLen := 0
+
         io.header.ready := True
         when (io.header.valid) {
           headerBuffered := io.header.payload
@@ -97,16 +101,15 @@ case class AxiStreamInjectHeader(axisConfig: Axi4StreamConfig, headerLen: Int) e
         io.input.ready := True
         when (io.input.valid) {
           // calculate and store shifts
-          firstBeatGap := CountTrailingZeroes(io.input.keep).resize(segmentLenWidth)
-          outHeaderOff := 0
+          firstBeatGap := firstBeatGapNext
 
           firstBeatBuffered := maskedInput
           firstKeepBuffered := io.input.keep
           firstLastBuffered := io.input.last
 
-          when (firstBeatGap < headerLen) {
+          when (firstBeatGapNext < headerLen) {
             // gap smaller than header, need dedicated header beats
-            outHeaderLen := (headerTailLen - firstBeatGap).resized
+            outHeaderLen := (headerTailLen - firstBeatGapNext).resized
             goto(outputHeaderBeats)
           } otherwise {
             // gap bigger than the entire header, directly output first data beat
@@ -145,22 +148,25 @@ case class AxiStreamInjectHeader(axisConfig: Axi4StreamConfig, headerLen: Int) e
         io.output.last := False
         io.output.valid := True
 
+        val hdrLeft = headerLen - outHeaderOffNext
+        assert((hdrLeft - firstBeatGap) % axisConfig.dataWidth === 0, "length calculation error")
+        when (hdrLeft =/= firstBeatGap) {
+          // if we are not writing the first data beat,
+          // we must be outputing a full header beat now;
+          // header size must be at least one full beat
+          assert(axisConfig.dataWidth <= outHeaderLen.resize(segmentLenWidth), "ran out of header")
+        }
+
         when (io.output.ready) {
           outHeaderOff := outHeaderOffNext
           headerBuffered := headerBuffered >> (outHeaderLen * 8)
 
-          val hdrLeft = headerLen - outHeaderOffNext
-          assert((hdrLeft - firstBeatGap) % axisConfig.dataWidth === 0, "length calculation error")
           when (hdrLeft === firstBeatGap) {
             outHeaderLen := hdrLeft
             goto(outputFirstDataBeat)
           } otherwise {
-            // if we are not writing the first data beat (other arm of this when),
-            // we must be outputing a full header beat now
-            // header size must be at least one full beat
-            assert(axisConfig.dataWidth <= outHeaderLen.resize(segmentLenWidth), "ran out of header")
             outHeaderLen := U(axisConfig.dataWidth).resized
-            // just sent a whole header beat, stay here
+            // just sent a whole header beat, stay in this state
           }
         }
       }

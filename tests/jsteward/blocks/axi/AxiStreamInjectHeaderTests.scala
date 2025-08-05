@@ -43,6 +43,7 @@ trait AxiStreamInjectHeaderTestsCommonSetup extends DutSimFunSuite[AxiStreamInje
         val (hdr, pld) = hdrToSendQueue.dequeue()
         h #= hdr.toArray
         dataToCheckQueue += hdr ++ pld
+        println(s"Sent header")
         true
       }
     }
@@ -65,15 +66,18 @@ class AxiStreamInjectHeaderEthernetTests extends AxiStreamInjectHeaderTestsCommo
   def testEthernetHeader(randomizeKeep: Boolean, iterations: Int, dut: AxiStreamInjectHeader) = {
     val (pktIn, hdrQ, dataQ) = setup(dut, randomizeKeep)
 
-    (0 until iterations) foreach { _ =>
+    (0 until iterations) foreach { idx =>
       val macAddrs = Random.nextBytes(12).toList
       println(s"pushing mac addrs ${macAddrs.bytesToHex}")
       val ethernetHdr = macAddrs ++ hexToBytesBE("0800")
-      val payloadLen = Random.nextInt(512)
+      val payloadLen = Random.between(1, 512) // at least one byte payload
       val payload = Random.nextBytes(payloadLen).toList
 
       hdrQ.enqueue((ethernetHdr, payload))
+      println(s"Sending payload (${payload.length} B)")
       pktIn.send(payload)
+
+      println(s"Sent packet #$idx")
     }
 
     waitUntil(hdrQ.isEmpty && dataQ.isEmpty)
