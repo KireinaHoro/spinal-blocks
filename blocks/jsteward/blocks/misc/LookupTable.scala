@@ -3,45 +3,35 @@ package jsteward.blocks.misc
 import jsteward.blocks.misc.LookupTable.LookupFunc
 import spinal.core._
 import spinal.lib._
-import spinal.lib.bus.misc.BusSlaveFactory
-import spinal.lib.bus.regif.AccessType
 import spinal.lib.misc.pipeline._
 
 import scala.language.postfixOps
 
 object LookupTable {
-  /** (stored key, stored value, query key) => match? */
-  type LookupFunc[KT <: Data, VT <: Data, QT <: Data] = (KT, VT, QT) => Bool
+  /** (stored value, query) => match? */
+  type LookupFunc[VT <: Data, QT <: Data] = (VT, QT) => Bool
 }
 
 case class LookupTable[
-  KT <: Data,
   VT <: Data,
   QT <: Data,
   UT <: Data,
-](keyType: HardType[KT],
-  valueType: HardType[VT],
+](valueType: HardType[VT],
   queryType: HardType[QT],
   userDataType: HardType[UT],
   numElems: Int,
   valueInit: Option[() => VT] = None,
-  matchFunc: LookupFunc[KT, VT, QT],
+  matchFunc: LookupFunc[VT, QT],
  ) extends Component {
   val idxWidth = log2Up(numElems)
 
-  case class StorageUnit() extends Bundle {
-    val key = keyType()
-    val value = valueType()
-  }
-
   val io = new Bundle {
     val update = slave(Flow(new Bundle {
-      val key = keyType()
       val value = valueType()
       val idx = UInt(idxWidth bits)
     }))
     val readbackIdx = in(UInt(idxWidth bits))
-    val readback = out(StorageUnit())
+    val readback = out(valueType())
 
     val lookup = slave(Stream(new Bundle {
       val query = queryType()
@@ -55,16 +45,15 @@ case class LookupTable[
     }))
   }
 
-  val storage = Vec.fill(numElems)(Reg(StorageUnit()))
+  val storage = Vec.fill(numElems)(Reg(valueType()))
   valueInit match { case Some(vi) =>
-    storage.foreach { _.value init vi() }
+    storage.foreach { _ init vi() }
   }
 
   when (io.update.fire) {
-    storage(io.update.idx).key := io.update.key
-    storage(io.update.idx).value := io.update.value
+    storage(io.update.idx) := io.update.value
   }
-  io.readback.assignAllByName(storage(io.readbackIdx))
+  io.readback := storage(io.readbackIdx)
 
   val pip = new StagePipeline
   pip.node(0).arbitrateFrom(io.lookup)
@@ -78,7 +67,7 @@ case class LookupTable[
   val parallelMatch = new pip.Area(1) {
     val matchVec = Bits(numElems bits)
     storage zip matchVec.asBools foreach { case (s, m) =>
-      m := matchFunc(s.key, s.value, QUERY)
+      m := matchFunc(s, QUERY)
     }
 
     val MATCH_VEC = insert(matchVec)
@@ -88,7 +77,7 @@ case class LookupTable[
   val calcIdx = new pip.Area(2) {
     val MATCHED = insert(MATCH_VEC.orR)
     val IDX = insert(OHToUInt(MATCH_VEC))
-    val VALUE = insert(PriorityMux(MATCH_VEC, storage.map(_.value)))
+    val VALUE = insert(PriorityMux(MATCH_VEC, storage))
   }
   import calcIdx._
 
