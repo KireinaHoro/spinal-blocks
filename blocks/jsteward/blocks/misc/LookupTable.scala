@@ -10,20 +10,22 @@ import spinal.lib.misc.pipeline._
 import scala.language.postfixOps
 
 object LookupTable {
-  /** (stored key, stored value, lookup key) => match? */
-  type LookupFunc[KT <: Data, VT <: Data] = (KT, VT, KT) => Bool
+  /** (stored key, stored value, query key) => match? */
+  type LookupFunc[KT <: Data, VT <: Data, QT <: Data] = (KT, VT, QT) => Bool
 }
 
 case class LookupTable[
   KT <: Data,
   VT <: Data,
+  QT <: Data,
   UT <: Data,
 ](keyType: HardType[KT],
   valueType: HardType[VT],
+  queryType: HardType[QT],
   userDataType: HardType[UT],
   numElems: Int,
-  valueInit: () => VT,
-  matchFunc: LookupFunc[KT, VT],
+  valueInit: Option[() => VT] = None,
+  matchFunc: LookupFunc[KT, VT, QT],
  ) extends Component {
   val idxWidth = log2Up(numElems)
 
@@ -42,7 +44,7 @@ case class LookupTable[
     val readback = out(StorageUnit())
 
     val lookup = slave(Stream(new Bundle {
-      val key = keyType()
+      val query = queryType()
       val userData = userDataType()
     }))
     val result = master(Stream(new Bundle {
@@ -54,7 +56,9 @@ case class LookupTable[
   }
 
   val storage = Vec.fill(numElems)(Reg(StorageUnit()))
-  storage.foreach { _.value init valueInit() }
+  valueInit match { case Some(vi) =>
+    storage.foreach { _.value init vi() }
+  }
 
   when (io.update.fire) {
     storage(io.update.idx).key := io.update.key
@@ -66,7 +70,7 @@ case class LookupTable[
   pip.node(0).arbitrateFrom(io.lookup)
 
   val captureKey = new pip.Area(0) {
-    val KEY = insert(io.lookup.key)
+    val QUERY = insert(io.lookup.query)
     val USER_DATA = insert(io.lookup.userData)
   }
   import captureKey._
@@ -74,7 +78,7 @@ case class LookupTable[
   val parallelMatch = new pip.Area(1) {
     val matchVec = Bits(numElems bits)
     storage zip matchVec.asBools foreach { case (s, m) =>
-      m := matchFunc(s.key, s.value, KEY)
+      m := matchFunc(s.key, s.value, QUERY)
     }
 
     val MATCH_VEC = insert(matchVec)
