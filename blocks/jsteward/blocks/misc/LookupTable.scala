@@ -20,7 +20,7 @@ case class LookupTable[
   queryType: HardType[QT],
   userDataType: HardType[UT],
   numElems: Int,
-  valueInit: Option[() => VT] = None,
+  valueInit: VT => (),
   matchFunc: LookupFunc[VT, QT],
  ) extends Component {
   val idxWidth = log2Up(numElems)
@@ -46,9 +46,7 @@ case class LookupTable[
   }
 
   val storage = Vec.fill(numElems)(Reg(valueType()))
-  valueInit match { case Some(vi) =>
-    storage.foreach { _ init vi() }
-  }
+  storage.foreach(valueInit)
 
   when (io.update.fire) {
     storage(io.update.idx) := io.update.value
