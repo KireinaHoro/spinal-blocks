@@ -24,6 +24,9 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
 
   val io = new Bundle {
     val input = slave(Axi4Stream(axisConfig))
+    // FIXME: should put header inside TUSER of output instead of as a separate stream;
+    //        timing requirements between header and output is fragile and will break if
+    //        header gets pipelined
     val output = master(Axi4Stream(axisConfig))
     val header = master(Stream(Bits(maxHeaderLen * 8 bits)))
     val statistics = out(new Bundle {
