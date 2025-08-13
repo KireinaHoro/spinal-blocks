@@ -20,7 +20,7 @@ case class LookupTable[
   queryType: HardType[QT],
   userDataType: HardType[UT],
   numElems: Int,
-  valueInit: VT => (),
+  valueInit: VT => Unit,
   matchFunc: LookupFunc[VT, QT],
  ) extends Component {
   val idxWidth = log2Up(numElems)
