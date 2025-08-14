@@ -50,8 +50,15 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
 
     new ClLoadStore {
       def load: List[Byte] = {
+        var readInProgress = true
+        fork {
+          clockDomain.waitActiveEdge(10000)
+          assert(!readInProgress, f"timeout waiting for CL reload on addr $addr%#x (aliased $aliased%#x)")
+        }
+
         val ret = dcs.read(aliased, ECI_CL_SIZE_BYTES, len = 1)
         log(f"DCS load:  addr $addr%#x (aliased $aliased%#x) -> ${ret.bytesToHex}")
+        readInProgress = false
         ret
       }
 
