@@ -24,8 +24,10 @@ case class LookupTable[VT <: Data](valueType: HardType[VT], numElems: Int)(value
   }
   readback := storage(readbackIdx)
 
-  def makePort[QT <: Data, UT <: Data](queryType: HardType[QT], userDataType: HardType[UT], name: String = "")
-                                      (matchFunc: (VT, QT) => Bool) = this.rework {
+  def makePort[QT <: Data, UT <: Data](queryType: HardType[QT], userDataType: HardType[UT],
+                                       name: String = "",
+                                       singleMatch: Boolean = false)
+                                      (matchFunc: (VT, QT, Int) => Bool) = this.rework {
     val gen = new Area {
       val lookup = slave(Stream(new Bundle {
         val query = queryType()
@@ -49,8 +51,13 @@ case class LookupTable[VT <: Data](valueType: HardType[VT], numElems: Int)(value
 
       val parallelMatch = new pip.Area(1) {
         val matchVec = Bits(numElems bits)
-        storage zip matchVec.asBools foreach { case (s, m) =>
-          m := matchFunc(s, QUERY)
+        (storage zip matchVec.asBools).zipWithIndex.foreach { case ((s, m), idx) =>
+          m := matchFunc(s, QUERY, idx)
+        }
+        singleMatch generate {
+          when (isValid) {
+            assert(CountOne(matchVec) === 1, "single match query should match exactly one element")
+          }
         }
 
         val MATCH_VEC = insert(matchVec)
