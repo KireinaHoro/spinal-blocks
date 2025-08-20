@@ -26,12 +26,22 @@ package object sim {
   class BigIntBuilder {
     private var currOffset = 0
     private var currValue = BigInt(0)
+
+    /** encode a value as bitfield to be used as a segment; handles negative values as well */
+    private def encode(width: Int, v: BigInt): BigInt = {
+      val mask = (BigInt(1) << width) - 1
+      val minAllowed = -(BigInt(1) << (width - 1))
+      val truncated = v & mask
+      assert(v >= minAllowed && v <= mask,
+        f"value $v ($v%x) cannot fit into $width bits (would truncate to $truncated%x)")
+      truncated
+    }
+
     /** push one segment with a given width */
     def push(width: Int, v: BigInt, skip: Int = 0): this.type = {
-      assert(log2Up(v) <= width, s"value $v cannot fit into $width bits")
       currOffset += skip
 
-      currValue = currValue.assignToRange(width+currOffset-1 downto currOffset, v)
+      currValue = currValue.assignToRange(width+currOffset-1 downto currOffset, encode(width, v))
       currOffset += width
       this
     }
@@ -40,10 +50,9 @@ package object sim {
       currOffset += skip
 
       val w = totalWidth - currOffset
-      assert(log2Up(v) <= w, s"value $v cannot fit into $w bits")
       assert(totalWidth > currOffset, s"must have at least one bit to push!  current width: $currOffset, tried to grow to $totalWidth bits")
 
-      currValue = currValue.assignToRange(totalWidth-1 downto currOffset, v)
+      currValue = currValue.assignToRange(totalWidth-1 downto currOffset, encode(w, v))
       currOffset = totalWidth
       this
     }
