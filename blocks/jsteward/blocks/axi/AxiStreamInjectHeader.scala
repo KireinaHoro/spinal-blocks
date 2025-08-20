@@ -50,9 +50,9 @@ case class AxiStreamInjectHeader(axisConfig: Axi4StreamConfig, headerLen: Int) e
   val firstKeepBuffered = Reg(Bits(axisConfig.dataWidth bits))
   val firstLastBuffered = Reg(Bool())
 
-  val headerFrag, lastHeaderFrag = Bits(beatWidth bits)
-  val headerFragMask, lastHeaderFragMask = Bits(axisConfig.dataWidth bits)
-  val lastHeaderToShift = UInt(segmentLenWidth bits)
+  val headerFrag, lastHeaderFrag, firstHeaderFrag = Bits(beatWidth bits)
+  val headerFragMask, lastHeaderFragMask, firstHeaderFragMask = Bits(axisConfig.dataWidth bits)
+  val firstHeaderToShift, lastHeaderToShift = UInt(segmentLenWidth bits)
 
   headerFragMask := ((U(1, axisConfig.dataWidth bits) |<< outHeaderLen) - 1).asBits
   headerFrag := headerBuffered.resize(beatWidth)
@@ -62,6 +62,10 @@ case class AxiStreamInjectHeader(axisConfig: Axi4StreamConfig, headerLen: Int) e
   lastHeaderToShift := firstBeatGap - outHeaderLen
   lastHeaderFragMask := headerFragMask |<< lastHeaderToShift
   lastHeaderFrag := headerFrag |<< (lastHeaderToShift * 8)
+
+  firstHeaderToShift := axisConfig.dataWidth - outHeaderLen
+  firstHeaderFragMask := headerFragMask |<< firstHeaderToShift
+  firstHeaderFrag := headerFrag |<< (firstHeaderToShift * 8)
 
   def selectWithByteMask(data: Bits, byteEnable: Bits): Bits = new Composite(data, "masked") {
     val ret = data.clone()
@@ -143,8 +147,8 @@ case class AxiStreamInjectHeader(axisConfig: Axi4StreamConfig, headerLen: Int) e
     }
     val outputHeaderBeats = new State {
       whenIsActive {
-        io.output.data := headerFrag
-        io.output.keep := headerFragMask
+        io.output.data := firstHeaderFrag
+        io.output.keep := firstHeaderFragMask
         io.output.last := False
         io.output.valid := True
 

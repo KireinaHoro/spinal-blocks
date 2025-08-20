@@ -136,6 +136,10 @@ case class AxiStreamAligner(axisConfig: Axi4StreamConfig) extends Component {
     val FULL_DATA = insert(fullData)
     val FULL_KEEP = insert(fullKeep)
     val FULL_LAST = insert(fullLast)
+
+    when (down.isValid) {
+      assert(FULL_LAST || FULL_KEEP.andR, "KEEP not fully set in the middle of stream")
+    }
   }
   import assembleBeat._
 
