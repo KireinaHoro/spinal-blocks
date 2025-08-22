@@ -66,7 +66,11 @@ case class LookupTable[VT <: Data](valueType: HardType[VT], numElems: Int)(value
 
       val calcIdx = new pip.Area(2) {
         val MATCHED = insert(MATCH_VEC.orR)
-        val IDX = insert(OHToUInt(MATCH_VEC))
+        val IDX = insert(if (singleMatch) {
+          OHToUInt(MATCH_VEC)
+        } else {
+          OHToUInt(OHMasking.firstV2[Bits](MATCH_VEC))
+        })
         val VALUE = insert(PriorityMux(MATCH_VEC, storage))
       }
       import calcIdx._
