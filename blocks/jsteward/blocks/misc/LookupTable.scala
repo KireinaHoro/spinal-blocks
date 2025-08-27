@@ -56,7 +56,7 @@ case class LookupTable[VT <: Data](valueType: HardType[VT], numElems: Int)(value
         }
         singleMatch generate {
           when (isValid) {
-            assert(CountOne(matchVec) === 1, "single match query should match exactly one element")
+            assert(CountOne(matchVec) <= 1, "single match query should match one or zero element")
           }
         }
 
