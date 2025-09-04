@@ -6,6 +6,9 @@ import spinal.lib.misc.pipeline._
 
 import scala.language.postfixOps
 
+// TODO: implement a version that uses memory instead of just registers.
+//       - multi-cycle lookup (non-pipelined)
+//       - single-cycle update / readback
 case class LookupTable[VT <: Data](valueType: HardType[VT], numElems: Int)(valueInit: VT => Unit) extends Component {
   val idxWidth = log2Up(numElems)
 
