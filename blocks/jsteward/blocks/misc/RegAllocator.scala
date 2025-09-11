@@ -192,12 +192,14 @@ class RegAllocatorFactory {
         os.write(outPath, s"""
            |/*
            | * ${devName}.dev: register description of ${devName}.
+           | * !! AUTO-GENERATED FILE, DO NOT EDIT !!
            | *
            | * Describes registers exposed over the CSR interface as well as datatypes of
            | * various descriptors in memory.
            | *
-           | * Repeating register blocks are broken into multiple devices to allow software
-           | * to index them.
+           | * Register blocks are broken into multiple devices to allow:
+           | *  - software to index repeating blocks;
+           | *  - better grouping of registers of the same purpose.
            | */
            |
            |device $devName lsbfirst ($argDecl) "$dn block for $prefix" {
