@@ -36,8 +36,8 @@ case class AxiStreamFilter(
   val fsm = new StateMachine {
     val idle: State = new State with EntryPoint {
       whenIsActive {
-        when (io.input.valid) {
-          assert(actionFifo.io.pop.valid, "no action enqueued for frame")
+        // wait until both frame and action are present
+        when (io.input.valid && actionFifo.io.pop.valid) {
           when (actionFifo.io.pop.payload === FilterAction.drop) {
             goto(dropFrame)
           } otherwise {
