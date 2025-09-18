@@ -151,14 +151,16 @@ package object axi {
       val ret = monitor.io.frame_len
     }.ret
 
-    def throwFrameWhen(cond: Flow[Bool]) = new Composite(axis, "throwFrameWhen") {
-      val dropper = AxiStreamDropFrame(axis.config)
+    def throwFrameWhen(cond: Bool) = new Composite(axis, "throwFrameWhen") {
+      val dropper = AxiStreamDropFrame(axis.config, triggerDoDrop = true)
       dropper.io.input << axis
-      dropper.io.drop << cond
+      dropper.io.trigger := cond
+    }.dropper.io.output
 
-      val ret = dropper.io.output
-    }.ret
-
-    def takeFrameWhen(cond: Flow[Bool]) = throwFrameWhen(cond.map(!_))
+    def takeFrameWhen(cond: Bool) = new Composite(axis, "takeFrameWhen") {
+      val dropper = AxiStreamDropFrame(axis.config, triggerDoDrop = false)
+      dropper.io.input << axis
+      dropper.io.trigger := cond
+    }.dropper.io.output
   }
 }
