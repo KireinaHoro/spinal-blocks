@@ -150,17 +150,5 @@ package object axi {
       monitor.driveFrom(axis)
       val ret = monitor.io.frame_len
     }.ret
-
-    def throwFrameWhen(cond: Bool) = new Composite(axis, "throwFrameWhen") {
-      val dropper = AxiStreamDropFrame(axis.config, triggerDoDrop = true)
-      dropper.io.input << axis
-      dropper.io.trigger := cond
-    }.dropper.io.output
-
-    def takeFrameWhen(cond: Bool) = new Composite(axis, "takeFrameWhen") {
-      val dropper = AxiStreamDropFrame(axis.config, triggerDoDrop = false)
-      dropper.io.input << axis
-      dropper.io.trigger := cond
-    }.dropper.io.output
   }
 }
