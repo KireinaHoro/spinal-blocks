@@ -183,7 +183,6 @@ class RegAllocatorFactory {
         val devName = if (dn == "dtypes") prefix else s"${prefix}_$dn"
         val outPath = outDir / s"$devName.dev"
         val argDecl = if (dn == "dtypes") "" else "addr base"
-        // FIXME: import system is broken in Mackerel anyways
         val importLine = if (mackerelTypeDefs.nonEmpty && dn != "dtypes") {
           s"import $prefix;"
         } else ""
@@ -201,7 +200,7 @@ class RegAllocatorFactory {
            | *  - software to index repeating blocks;
            | *  - better grouping of registers of the same purpose.
            | */
-           |${if (dn == "dtypes") "import $prefix;" else ""}
+           |$importLine
            |
            |device $devName lsbfirst ($argDecl) "$dn block for $prefix" {
            |$body
