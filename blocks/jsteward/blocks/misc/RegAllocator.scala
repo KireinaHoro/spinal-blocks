@@ -12,12 +12,12 @@ trait RegBlockReadBack {
 }
 
 trait RegBlockAlloc {
-  def apply(name: String, subName: String = "", readSensitive: Boolean = false, attr: AccessType = AccessType.RW, ty: String = ""): BigInt
-  def block(name: String, subName: String = "", count: Int, readSensitive: Boolean = false, attr: AccessType = AccessType.RW): Seq[BigInt]
+  def apply(name: String, desc: String, subName: String = "", readSensitive: Boolean = false, attr: AccessType = AccessType.RW, ty: String = ""): BigInt
+  def block(name: String, desc: String, subName: String = "", count: Int, readSensitive: Boolean = false, attr: AccessType = AccessType.RW): Seq[BigInt]
 }
 
 class RegAllocatorFactory {
-  private case class RegDesc(baseOffset: BigInt, size: BigInt, count: Int, attr: AccessType, ty: String) {
+  private case class RegDesc(baseOffset: BigInt, size: BigInt, count: Int, attr: AccessType, ty: String, desc: String) {
     def addr(blockBase: BigInt, idx: Int = 0) = {
       assert(idx < count, s"trying to access reg idx $idx, larger than total of $count instances")
       val ret = baseOffset + blockBase + size * idx
@@ -38,7 +38,7 @@ class RegAllocatorFactory {
     private var readSensitiveAddrOffset: BigInt = blockLen
 
     trait FullAlloc {
-      def apply(name: String, subName: String = "", idx: Int = 0, count: Int = 1, size: BigInt = defaultSize, readSensitive: Boolean = false, attr: AccessType = AccessType.RW, ty: String = ""): BigInt
+      def apply(name: String, desc: String, subName: String = "", idx: Int = 0, count: Int = 1, size: BigInt = defaultSize, readSensitive: Boolean = false, attr: AccessType = AccessType.RW, ty: String = ""): BigInt
     }
 
     def readBack(blockIdx: Int): RegBlockReadBack = {
@@ -55,7 +55,7 @@ class RegAllocatorFactory {
       assert(!allocatedBases.isDefinedAt(blockIdx), f"block index $blockIdx already allocated for $blockName!")
       allocatedBases.update(blockIdx, base)
 
-      (name: String, subName: String, idx: Int, count: Int, size: BigInt, readSensitive: Boolean, attr: AccessType, ty: String) => {
+      (name: String, desc: String, subName: String, idx: Int, count: Int, size: BigInt, readSensitive: Boolean, attr: AccessType, ty: String) => {
         val key = genKey(name, subName)
         if (allocatedBases.size > 1) {
           // this is a block recall (e.g. multiple instances of the same plugin)
@@ -88,7 +88,7 @@ class RegAllocatorFactory {
           blockMap.get(key) match {
             case None =>
               // create new RegDesc
-              blockMap += key -> RegDesc(pushReg(), size, count, attr, ty)
+              blockMap += key -> RegDesc(pushReg(), size, count, attr, ty, desc)
             case Some(desc) =>
               // we should expand the RegDesc by exactly one
               assert(desc.count == count, "tries to read reg with different replication count")
@@ -142,15 +142,15 @@ class RegAllocatorFactory {
     def toCName = toCMacroName.toLowerCase
   }
 
-  private case class MackerelTypeDef(clazz: Class[_], defs: String, targetFile: String)
+  private case class MackerelTypeDef(defs: String, targetFile: String)
   private val mackerelTypeDefs = mutable.ListBuffer[MackerelTypeDef]()
-  def addMackerelEpilogue[T](ty: Class[T], defs: String, target: String = "dtypes"): Unit = {
-    mackerelTypeDefs += MackerelTypeDef(ty, defs, target)
+  def addMackerelEpilogue(defs: String, target: String = "dtypes"): Unit = {
+    mackerelTypeDefs += MackerelTypeDef(defs, target)
   }
   def writeMackerel(outDir: os.Path, prefix: String): Unit = {
     val blockDefs = mutable.Map[String, StringBuilder]()
 
-    mackerelTypeDefs.foreach { case MackerelTypeDef(_, d, target) =>
+    mackerelTypeDefs.foreach { case MackerelTypeDef(d, target) =>
       val builder = blockDefs.getOrElseUpdate(target, new StringBuilder)
       builder.append(d + "\n")
     }
@@ -160,9 +160,9 @@ class RegAllocatorFactory {
       val rn = name.toCName
       val ra = desc.attr.toString.toLowerCase
       val addr = desc.addr(0)
-      val dsc = s"$name @ $blockName"
+      val dsc = desc.desc
       val emitTy = if (desc.ty.isEmpty) {
-        s"uint${desc.size * 8}"
+        s"type(uint${desc.size * 8})"
       } else desc.ty
       if (desc.size > 8) {
         // do not emit register declaration if size is too big
@@ -170,9 +170,9 @@ class RegAllocatorFactory {
         // TODO: emit datatype after mackerel support is added
         println(s"Skipping Mackerel definition for $name with size ${desc.size}")
       } else if (desc.count == 1) {
-        builder.append(f"register $rn $ra addr(base, $addr%#x) \"$dsc\" type($emitTy);\n")
+        builder.append(f"register $rn $ra addr(base, $addr%#x) \"$dsc\" $emitTy;\n")
       } else {
-        builder.append(f"regarray $rn $ra addr(base, $addr%#x) [${desc.count}] \"$dsc\" type($emitTy);\n")
+        builder.append(f"regarray $rn $ra addr(base, $addr%#x) [${desc.count}] \"$dsc\" $emitTy;\n")
       }
     case _ =>
     }
@@ -201,6 +201,7 @@ class RegAllocatorFactory {
            | *  - software to index repeating blocks;
            | *  - better grouping of registers of the same purpose.
            | */
+           |${if (dn == "dtypes") "import $prefix;" else ""}
            |
            |device $devName lsbfirst ($argDecl) "$dn block for $prefix" {
            |$body
@@ -281,10 +282,10 @@ class RegAllocatorFactory {
 
 object RegAllocatorFactory {
   implicit def allocToGeneric(alloc: RegAllocatorFactory#RegBlock#FullAlloc): RegBlockAlloc = new RegBlockAlloc {
-    def apply(name: String, subName: String, readSensitive: Boolean, attr: AccessType, ty: String): BigInt =
-      alloc(name, subName, readSensitive = readSensitive, attr = attr, ty = ty)
-    def block(name: String, subName: String, count: Int, readSensitive: Boolean, attr: AccessType) =
+    def apply(name: String, desc: String, subName: String, readSensitive: Boolean, attr: AccessType, ty: String): BigInt =
+      alloc(name, desc, subName, readSensitive = readSensitive, attr = attr, ty = ty)
+    def block(name: String, desc: String, subName: String, count: Int, readSensitive: Boolean, attr: AccessType) =
       for (i <- 0 until count)
-        yield alloc(name, subName, i, count, readSensitive = readSensitive, attr = attr)
+        yield alloc(name, desc, subName, i, count, readSensitive = readSensitive, attr = attr)
   }
 }
