@@ -22,7 +22,7 @@ package object misc {
     }
   }
 
-  implicit class RichMultiData[T <: MultiData](b: T) {
+  implicit class RichData[T <: Data](b: T) {
     def mapElement[E <: Data](locator: T => E)(f: E => E): T = {
       val ret = b.clone.asInstanceOf[T].allowOverride()
       ret := b
@@ -32,16 +32,14 @@ package object misc {
     }
   }
 
-  implicit class RichStreamMultiData[T <: MultiData](s: Stream[T]) {
+  implicit class RichStream[T <: Data](s: Stream[T]) {
     def mapPayloadElement[E <: Data](locator: T => E)(f: E => E): Stream[T] = {
       val ret = s.clone
       ret.translateFrom(s) { case (r, ss) =>
         r := ss.mapElement(locator)(f)
       }
     }
-  }
 
-  implicit class RichStream[T <: Data](s: Stream[T]) {
     /** generate a stream that drives the current stream, with a padded payload */
     def padSlave(low: Int, high: Int = 0): Stream[Bits] = {
       val pw = s.payload.getBitsWidth
