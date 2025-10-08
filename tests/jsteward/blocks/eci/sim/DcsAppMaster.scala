@@ -224,13 +224,12 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
     StreamMonitorThreadful(dcs.cleanMaybeInvReq, clockDomain) { req =>
       // verify VC numbers odd/even
       req.vc.toInt match {
-        case 16 => assert(idx == 0)
-        case 17 => assert(idx == 1)
+        case 16 => assert(idx == 0, "VC number and odd/even mismatch")
+        case 17 => assert(idx == 1, "VC number and odd/even mismatch")
       }
 
       val aliased = req.data.lclMfwdGeneric.simGet(_.address).toBigInt
       // verify odd/even address: odd DCS should have even addresses
-      assert(aliased(7) == (idx == 0), f"DCS even/odd mismatch: got aliased address $aliased%#x but DCS index is $idx")
 
       val addr = unaliasAddress(aliased)
       val cl = findCl(aliased)
@@ -253,13 +252,16 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
         clockDomain.waitActiveEdgeWhere(!cl.memInProgress)
       }
 
+      val opName = opcode match {
+        case 0 => "LC "
+        case 1 => "LCI"
+      }
+      log(f"$opName: ID $hreqId addr $addr%#x (aliased $aliased%#x)")
+      assert(aliased(7) == (idx == 0), f"DCS even/odd mismatch: got aliased address $aliased%#x but DCS index is $idx")
+
       opcode match {
-        case 0 => // LC
-          log(f"LC:   ID $hreqId addr $addr%#x (aliased $aliased%#x)")
-          cl.toShared()
-        case 1 => // LCI
-          log(f"LCI:  ID $hreqId addr $addr%#x (aliased $aliased%#x)")
-          cl.toInvalid()
+        case 0 => cl.toShared()
+        case 1 => cl.toInvalid()
       }
       cl.lock()
 
