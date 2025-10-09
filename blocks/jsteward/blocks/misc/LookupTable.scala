@@ -28,7 +28,7 @@ case class LookupTable[VT <: Data](valueType: HardType[VT], numElems: Int)(value
   readback := storage(readbackIdx)
 
   def makePort[QT <: Data, UT <: Data](queryType: HardType[QT], userDataType: HardType[UT],
-                                       name: String = "",
+                                       portName: String = "",
                                        singleMatch: Boolean = false)
                                       (matchFunc: (VT, QT, Int) => Bool) = this.rework {
     val gen = new Area {
@@ -59,7 +59,7 @@ case class LookupTable[VT <: Data](valueType: HardType[VT], numElems: Int)(value
         }
         singleMatch generate {
           when (isValid) {
-            assert(CountOne(matchVec) <= 1, "single match query should match one or zero element")
+            assert(CountOne(matchVec) <= 1, s"port $portName: single match query should match one or zero element")
           }
         }
 
@@ -91,7 +91,7 @@ case class LookupTable[VT <: Data](valueType: HardType[VT], numElems: Int)(value
         * the payload should be dropped.
         */
       val lookupLatency = pip.nodes.size - 1
-    }.setName(name)
+    }.setName(portName)
 
     (gen.lookup, gen.result, gen.lookupLatency)
   }
