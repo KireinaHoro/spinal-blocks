@@ -45,6 +45,16 @@ package object sim {
       currOffset += width
       this
     }
+
+    def pushBytes(bytes: List[Byte], skip: Int = 0): this.type = {
+      var doSkip = skip
+      bytes.foreach { b =>
+        push(8, b.toBigInt, doSkip)
+        doSkip = 0
+      }
+      this
+    }
+
     /** push one segment to pad the whole [[BigInt]] to a given width */
     def pushTo(totalWidth: Int, v: BigInt, skip: Int = 0): this.type = {
       currOffset += skip
@@ -97,6 +107,7 @@ package object sim {
   def hexToBytesBE(bytes: String): List[Byte] = bytes.grouped(2).map(Integer.parseInt(_, 16).toByte).toList
   def intToBytesBE[T](a: T)(implicit n: Numeric[T]): List[Byte] = {
     val len = a match {
+      case _: Short => 2
       case _: Int => 4
       case _: Long => 8
     }
