@@ -2,6 +2,7 @@ package jsteward.blocks.misc
 
 import spinal.core._
 import spinal.lib.bus.regif.AccessType
+import spinal.lib.bus.regif.AccessType._
 
 import scala.collection.mutable
 
@@ -12,8 +13,8 @@ trait RegBlockReadBack {
 }
 
 trait RegBlockAlloc {
-  def apply(name: String, desc: String, subName: String = "", readSensitive: Boolean = false, attr: AccessType = AccessType.RW, ty: String = ""): BigInt
-  def block(name: String, desc: String, subName: String = "", count: Int, readSensitive: Boolean = false, attr: AccessType = AccessType.RW): Seq[BigInt]
+  def apply(name: String, desc: String, subName: String = "", readSensitive: Boolean = false, attr: AccessType = RW, ty: String = ""): BigInt
+  def block(name: String, desc: String, subName: String = "", count: Int, readSensitive: Boolean = false, attr: AccessType = RW): Seq[BigInt]
 }
 
 class RegAllocatorFactory {
@@ -38,7 +39,7 @@ class RegAllocatorFactory {
     private var readSensitiveAddrOffset: BigInt = blockLen
 
     trait FullAlloc {
-      def apply(name: String, desc: String, subName: String = "", idx: Int = 0, count: Int = 1, size: BigInt = defaultSize, readSensitive: Boolean = false, attr: AccessType = AccessType.RW, ty: String = ""): BigInt
+      def apply(name: String, desc: String, subName: String = "", idx: Int = 0, count: Int = 1, size: BigInt = defaultSize, readSensitive: Boolean = false, attr: AccessType = RW, ty: String = ""): BigInt
     }
 
     def readBack(blockIdx: Int): RegBlockReadBack = {
@@ -158,7 +159,13 @@ class RegAllocatorFactory {
     walkMappings { case (blockName, idx, _, name, desc) if idx == 0 =>
       val builder = blockDefs.getOrElseUpdate(blockName, new StringBuilder())
       val rn = name.toCName
-      val ra = desc.attr.toString.toLowerCase
+      val ra = desc.attr match {
+        case RO => "ro"
+        case RW => "rw"
+        case WO => "wo"
+        case RC => "rc"
+        case WC => "rwzc"
+      }
       val addr = desc.addr(0)
       val dsc = desc.desc
       val emitTy = if (desc.ty.isEmpty) {
