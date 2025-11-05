@@ -33,6 +33,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
       val headerOnly = Reg(UInt(64 bits))
       val partialHeader = Reg(UInt(64 bits))
       val incompleteHeader = Reg(UInt(64 bits))
+      val normalPackets = Reg(UInt(64 bits))
     })
   }
 
@@ -143,6 +144,8 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
           inc(_.partialHeader)
         }.elsewhen (BEAT_CONSUMED) {
           inc(_.headerOnly)
+        }.otherwise {
+          inc(_.normalPackets)
         }
         hdrSent := False
       }
