@@ -105,15 +105,6 @@ abstract class DutSimFunSuite[T <: Component] extends FixtureAnyFunSuite with Be
     sleepCycles(toSleep)
   }
 
-  def waitUntilOrTimeout(cond: => Boolean, timeoutCyc: Int = 500000)(implicit dut: T) = {
-    fork {
-      sleepCycles(timeoutCyc)
-      assert(cond, s"timeout after $timeoutCyc cycles")
-    }
-
-    waitUntil(cond)
-  }
-
   def dut: SimCompiled[T]
 
   def check(expected: List[Byte], got: List[Byte]) = assert(expected == got,
