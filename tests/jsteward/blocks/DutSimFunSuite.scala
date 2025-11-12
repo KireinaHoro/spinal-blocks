@@ -99,6 +99,12 @@ abstract class DutSimFunSuite[T <: Component] extends FixtureAnyFunSuite with Be
 
   def sleepCycles(n: Int)(implicit dut: T) = dut.clockDomain.waitActiveEdge(n)
 
+  def randomSleep(maxCycles: Int, minCycles: Int = 0)(implicit dut: T) = {
+    val toSleep = simRandom.between(minCycles, maxCycles)
+    println(s"[info] sleeping $toSleep cycles")
+    sleepCycles(toSleep)
+  }
+
   def dut: SimCompiled[T]
 
   def check(expected: List[Byte], got: List[Byte]) = assert(expected == got,
