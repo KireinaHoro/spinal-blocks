@@ -122,7 +122,8 @@ case class SimpleAsyncFifo[T <: Data](payloadType: HardType[T],
   // FIXME: we round up payload to byte boundary due to SpinalHDL AXI-Stream enforcing byte size
   val actualWidth = roundUp(payloadType.getBitsWidth, 8).toInt
   val axisConfig = Axi4StreamConfig(dataWidth = actualWidth / 8)
-  val fifo = AxiStreamAsyncFifo(axisConfig, depthWords, ramPipeline, outputFifoEnable, frameFifo, userBadFrameValue,
+  val fifo = AxiStreamAsyncFifo(axisConfig, depthWords * axisConfig.dataWidth,
+    ramPipeline, outputFifoEnable, frameFifo, userBadFrameValue,
     userBadFrameMask, dropBadFrame, dropWhenFull, markWhenFull, pauseEnable)(dropOversizeFrame, framePause)(clockSlave,
     clockMaster)
 
