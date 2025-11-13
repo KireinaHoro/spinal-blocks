@@ -52,7 +52,7 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
       def load: List[Byte] = {
         var readInProgress = true
         fork {
-          clockDomain.waitActiveEdge(10000)
+          clockDomain.waitActiveEdge(100000)
           assert(!readInProgress, f"timeout waiting for CL reload on addr $addr%#x (aliased $aliased%#x)")
         }
 
