@@ -10,3 +10,6 @@
 [submodule "deps/wb2axip"]
 	path = deps/wb2axip
 	url = https://github.com/ZipCPU/wb2axip
+[submodule "deps/pulp/axi"]
+	path = deps/pulp/axi
+	url = https://github.com/pulp-platform/axi
