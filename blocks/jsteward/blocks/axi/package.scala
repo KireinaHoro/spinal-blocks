@@ -143,6 +143,20 @@ package object axi {
       userWidth = if (config.useUser) config.userWidth else 1,
     )
 
+  def mapToIntf(config: Axi4Config, addRegion: Boolean = false): Axi4Config =
+    config.copy(
+      awUserWidth = 1,
+      arUserWidth = 1,
+      wUserWidth = 1,
+      rUserWidth = 1,
+      bUserWidth = 1,
+      useQos = true,
+      useRegion = addRegion,
+    )
+
+  def packParamList(params: Seq[BigInt], width: Int = 32) = VerilogValues(
+    params.reverse.map { v => f"$width'h$v%x" }.mkString("{", ",", "}"))
+
   implicit class RichAxi4Stream(axis: Axi4Stream) {
     def frameLength: Flow[UInt] = new Composite(axis, "frameLength") {
       val clockDomain = axis.getTag(classOf[ClockDomainTag]).map(_.clockDomain).getOrElse(ClockDomain.current)

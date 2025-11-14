@@ -8,13 +8,7 @@ import spinal.lib.bus.amba4.axi._
 class AxiAdapter(inConfig: Axi4Config, outDataWidth: Int, convertBurst: Boolean = true, convertNarrowBurst: Boolean = false, forwardId: Boolean = false) extends BlackBox {
   assert(clockDomain.config.resetKind == SYNC, "verilog-axi requires synchronous reset")
 
-  val intfConfig = inConfig.copy(
-    awUserWidth = 1,
-    arUserWidth = 1,
-    wUserWidth = 1,
-    rUserWidth = 1,
-    bUserWidth = 1,
-  )
+  val intfConfig = mapToIntf(inConfig)
 
   val generic = new Generic {
     val ADDR_WIDTH = inConfig.addressWidth

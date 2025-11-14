@@ -3,7 +3,7 @@
 	url = https://github.com/KireinaHoro/SpinalHDL
 [submodule "deps/verilog-axi"]
 	path = deps/verilog-axi
-	url = https://github.com/alexforencich/verilog-axi
+	url = https://github.com/KireinaHoro/verilog-axi
 [submodule "deps/verilog-axis"]
 	path = deps/verilog-axis
 	url = https://github.com/alexforencich/verilog-axis
