@@ -4,7 +4,7 @@ import jsteward.blocks.eci.EciCmdDefs.ECI_CL_SIZE_BYTES
 import jsteward.blocks.eci._
 import jsteward.blocks.misc.sim._
 import spinal.core.sim._
-import spinal.core.{ClockDomain, roundUp}
+import spinal.core.{ClockDomain, IntToBuilder, roundUp}
 import spinal.lib.{BigIntRicher => _, _}
 import spinal.lib.bus.amba4.axi.sim.Axi4Master
 import spinal.lib.sim._
@@ -30,6 +30,7 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
                         var doPartialWrite: Boolean = true,
                         var doReadbackCheck: Boolean = false,
                         maxVoluntaryInvsInRead: Int = 5,
+                        dcuIdxWidth: Int = 5, // default 32 DCUs per slice
                        ) {
   // index is unaliased address
   val clMap = mutable.HashMap[BigInt, DcsStateMachineSim]()
@@ -47,6 +48,7 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
     val aliased = aliasAddress(addr)
     // odd dcs for even cacheline!
     val dcs = if (aliased(7)) dcsEvenAxiMaster else dcsOddAxiMaster
+    val dcuId = aliased(dcuIdxWidth + 7 downto 7).toInt // INCLUDES odd/even bit (not DCU_IDX)
 
     new ClLoadStore {
       def load: List[Byte] = {
@@ -56,16 +58,16 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
           assert(!readInProgress, f"timeout waiting for CL reload on addr $addr%#x (aliased $aliased%#x)")
         }
 
-        val ret = dcs.read(aliased, ECI_CL_SIZE_BYTES, len = 1)
-        log(f"DCS load:  addr $addr%#x (aliased $aliased%#x) -> ${ret.bytesToHex}")
+        val ret = dcs.read(aliased, ECI_CL_SIZE_BYTES, len = 1, id = dcuId)
+        log(f"DCS load (DCU#$dcuId):  addr $addr%#x (aliased $aliased%#x) -> ${ret.bytesToHex}")
         readInProgress = false
         ret
       }
 
       def store(d: List[Byte]): Unit = {
-        log(f"DCS store: addr $addr%#x (aliased $aliased%#x) <- ${d.bytesToHex}")
+        log(f"DCS store (DCU#$dcuId): addr $addr%#x (aliased $aliased%#x) <- ${d.bytesToHex}")
         assert(d.length == ECI_CL_SIZE_BYTES, s"cache-line flush length ${d.length} does not match cacheline size ${ECI_CL_SIZE_BYTES}")
-        dcs.write(aliased, d, maxLen = 1)
+        dcs.write(aliased, d, maxLen = 1, id = dcuId)
       }
     }
   }
