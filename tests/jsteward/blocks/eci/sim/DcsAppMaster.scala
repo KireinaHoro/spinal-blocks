@@ -89,16 +89,18 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
 
     new ClLoadStore {
       def load: List[Byte] = {
+        var inProgress = true
         dcuRdEnter(dcuId)
         dcsInflightEnter(isEven)
 
         fork {
           clockDomain.waitActiveEdge(100000)
-          assert(!dcuInRd(dcuId), f"timeout waiting for CL reload on addr $addr%#x (aliased $aliased%#x)")
+          assert(!inProgress, f"timeout waiting for CL reload on addr $addr%#x (aliased $aliased%#x)")
         }
 
         val ret = dcs.read(aliased, ECI_CL_SIZE_BYTES, len = 1, id = dcuId)
         log(f"DCS load (DCU#$dcuId):  addr $addr%#x (aliased $aliased%#x) -> ${ret.bytesToHex}")
+        inProgress = false
 
         dcsInflightExit(isEven)
         dcuRdExit(dcuId)
