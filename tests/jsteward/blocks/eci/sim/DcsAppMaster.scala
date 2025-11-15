@@ -30,6 +30,7 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
                         var doPartialWrite: Boolean = true,
                         var doReadbackCheck: Boolean = false,
                         maxVoluntaryInvsInRead: Int = 5,
+                        maxInflightReqsPerSlice: Int = 5,
                         dcuIdxWidth: Int = 5, // default 32 DCUs per slice
                        ) {
   // index is unaliased address
@@ -61,18 +62,35 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
   def dcuWrEnter(id: Int) = dcuEnter(id, 2)
   def dcuWrExit(id: Int) = dcuExit(id, 2)
 
+  val dcsInflightLeft = mutable.Seq.fill(2)(maxInflightReqsPerSlice)
+  def dcsInflightEnter(isEven: Boolean) = {
+    val dcsId = if (isEven) 0 else 1
+    val sliceName = if (isEven) "even" else "odd "
+    def cond = dcsInflightLeft(dcsId) <= 0
+    if (cond) {
+      log(f"DCS $sliceName busy for read, waiting...")
+      waitUntil(!cond)
+    }
+    dcsInflightLeft(dcsId) -= 1
+  }
+  def dcsInflightExit(isEven: Boolean) = {
+    val dcsId = if (isEven) 0 else 1
+    dcsInflightLeft(dcsId) += 1
+  }
 
   def genLoadStore(addr: BigInt): ClLoadStore = {
     assert(addr % ECI_CL_SIZE_BYTES == 0, "address for cacheline not aligned")
 
     val aliased = aliasAddress(addr)
     // odd dcs for even cacheline!
-    val dcs = if (aliased(7)) dcsEvenAxiMaster else dcsOddAxiMaster
+    val isEven = aliased(7)
+    val dcs = if (isEven) dcsEvenAxiMaster else dcsOddAxiMaster
     val dcuId = aliased(dcuIdxWidth + 7 downto 7).toInt // INCLUDES odd/even bit (not DCU_IDX)
 
     new ClLoadStore {
       def load: List[Byte] = {
         dcuRdEnter(dcuId)
+        dcsInflightEnter(isEven)
 
         fork {
           clockDomain.waitActiveEdge(100000)
@@ -81,12 +99,15 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
 
         val ret = dcs.read(aliased, ECI_CL_SIZE_BYTES, len = 1, id = dcuId)
         log(f"DCS load (DCU#$dcuId):  addr $addr%#x (aliased $aliased%#x) -> ${ret.bytesToHex}")
+
+        dcsInflightExit(isEven)
         dcuRdExit(dcuId)
         ret
       }
 
       def store(d: List[Byte]): Unit = {
         dcuWrEnter(dcuId)
+        // axi_dw_converter does not limit in-flight writes, so no need to enter
 
         log(f"DCS store (DCU#$dcuId): addr $addr%#x (aliased $aliased%#x) <- ${d.bytesToHex}")
         assert(d.length == ECI_CL_SIZE_BYTES, s"cache-line flush length ${d.length} does not match cacheline size ${ECI_CL_SIZE_BYTES}")
