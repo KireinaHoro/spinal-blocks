@@ -42,6 +42,26 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
 
   private def log(msg: String): Unit = println(s"DcsAppMaster:\t$msg")
 
+  val dcusInProgress = mutable.Seq.fill(1 << (dcuIdxWidth + 1))(0)
+  def dcuToggle(id: Int, flagBit: Int) = dcusInProgress(id) ^= flagBit
+  def dcuCond(id: Int, flagBit: Int) = (dcusInProgress(id) & flagBit) != 0
+  def dcuEnter(id: Int, flagBit: Int) = {
+    // XXX: no need to lock since only one SimThread is running at a time
+    if (dcuCond(id, flagBit)) {
+      log(f"DCU#$id busy for read, waiting...")
+      waitUntil(!dcuCond(id, flagBit))
+    }
+    dcuToggle(id, flagBit)
+  }
+  def dcuExit(id: Int, flagBit: Int) = dcuToggle(id, flagBit)
+
+  def dcuRdEnter(id: Int) = dcuEnter(id, 1)
+  def dcuRdExit(id: Int) = dcuExit(id, 1)
+  def dcuInRd(id: Int) = dcuCond(id, 1)
+  def dcuWrEnter(id: Int) = dcuEnter(id, 2)
+  def dcuWrExit(id: Int) = dcuExit(id, 2)
+
+
   def genLoadStore(addr: BigInt): ClLoadStore = {
     assert(addr % ECI_CL_SIZE_BYTES == 0, "address for cacheline not aligned")
 
@@ -52,22 +72,27 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
 
     new ClLoadStore {
       def load: List[Byte] = {
-        var readInProgress = true
+        dcuRdEnter(dcuId)
+
         fork {
           clockDomain.waitActiveEdge(100000)
-          assert(!readInProgress, f"timeout waiting for CL reload on addr $addr%#x (aliased $aliased%#x)")
+          assert(!dcuInRd(dcuId), f"timeout waiting for CL reload on addr $addr%#x (aliased $aliased%#x)")
         }
 
         val ret = dcs.read(aliased, ECI_CL_SIZE_BYTES, len = 1, id = dcuId)
         log(f"DCS load (DCU#$dcuId):  addr $addr%#x (aliased $aliased%#x) -> ${ret.bytesToHex}")
-        readInProgress = false
+        dcuRdExit(dcuId)
         ret
       }
 
       def store(d: List[Byte]): Unit = {
+        dcuWrEnter(dcuId)
+
         log(f"DCS store (DCU#$dcuId): addr $addr%#x (aliased $aliased%#x) <- ${d.bytesToHex}")
         assert(d.length == ECI_CL_SIZE_BYTES, s"cache-line flush length ${d.length} does not match cacheline size ${ECI_CL_SIZE_BYTES}")
         dcs.write(aliased, d, maxLen = 1, id = dcuId)
+
+        dcuWrExit(dcuId)
       }
     }
   }
