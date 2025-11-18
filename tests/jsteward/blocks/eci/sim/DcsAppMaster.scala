@@ -87,6 +87,8 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
     val dcs = if (isEven) dcsEvenAxiMaster else dcsOddAxiMaster
     val dcuId = aliased(dcuIdxWidth + 7 downto 7).toInt // INCLUDES odd/even bit (not DCU_IDX)
 
+    val len = EciCmdDefs.ECI_CL_WIDTH / dcsEven.axiConfig.dataWidth - 1
+
     new ClLoadStore {
       def load: List[Byte] = {
         var inProgress = true
@@ -98,7 +100,7 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
           assert(!inProgress, f"timeout waiting for CL reload on addr $addr%#x (aliased $aliased%#x)")
         }
 
-        val ret = dcs.read(aliased, ECI_CL_SIZE_BYTES, id = dcuId)
+        val ret = dcs.read(aliased, ECI_CL_SIZE_BYTES, len = len, id = dcuId)
         log(f"DCS load (DCU#$dcuId):  addr $addr%#x (aliased $aliased%#x) -> ${ret.bytesToHex}")
         inProgress = false
 
@@ -113,7 +115,7 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
 
         log(f"DCS store (DCU#$dcuId): addr $addr%#x (aliased $aliased%#x) <- ${d.bytesToHex}")
         assert(d.length == ECI_CL_SIZE_BYTES, s"cache-line flush length ${d.length} does not match cacheline size ${ECI_CL_SIZE_BYTES}")
-        dcs.write(aliased, d, id = dcuId)
+        dcs.write(aliased, d, maxLen = len, id = dcuId)
 
         dcuWrExit(dcuId)
       }
