@@ -151,12 +151,14 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
     val numCls = totalLen / ECI_CL_SIZE_BYTES
 
     def readWithRandomInv(clOffset: BigInt): List[Byte] = {
+      println(f"Reading $clOffset%#x as part of host read request to $addr%#x ($totalBytes bytes)")
       val aliasedAddr = aliasAddress(clOffset)
       val clState = findCl(aliasedAddr)
       val firstRead = clState.read
       val numReps = if (voluntaryInvProb < Double.MinPositiveValue) 0 else Random.nextInt(maxVoluntaryInvsInRead)
-      (0 until numReps) foreach { _ =>
-        log(f"Voluntary invalidation DURING READ: $clOffset%#x (aliased $aliasedAddr%#x)")
+      println(f"Read on $clOffset%#x will trigger $numReps voluntary reloads")
+      (0 until numReps) foreach { idx =>
+        log(f"Voluntary invalidation #$idx DURING READ: $clOffset%#x (aliased $aliasedAddr%#x)")
 
         clState.invalidate()
         val reread = clState.read
