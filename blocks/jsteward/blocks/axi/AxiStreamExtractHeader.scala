@@ -123,15 +123,23 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
 
   val outputHeader = new pip.Ctrl(2) {
     val hdrSent = Reg(Bool()) init False
+    val hdrAllowed = Reg(Bool()) init True
 
     when (up.isValid && !hdrSent) {
       when(HDR_FULL || (HDR_PARTIAL && LAST)) {
-        io.header.valid := True
-        io.header.payload := HDR_OUT
-        when(!io.header.ready) {
+        when (hdrAllowed) {
+          io.header.valid := True
+          io.header.payload := HDR_OUT
+        }
+        when (!io.header.fire) {
           haltIt()
         } otherwise {
           hdrSent := True
+          when (!LAST) {
+            // header out and this was not the last beat;
+            // block more headers from going out
+            hdrAllowed := False
+          } // header out on the LAST beat, good to emit more
         }
       }
     }
@@ -144,6 +152,9 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
           inc(_.partialHeader)
         }.elsewhen (BEAT_CONSUMED) {
           inc(_.headerOnly)
+
+          // if the last beat would've been dropped, allow next header
+          hdrAllowed := True
         }.otherwise {
           inc(_.normalPackets)
         }
@@ -166,6 +177,10 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
   io.output.data := po(DATA)
   io.output.last := po(LAST)
   po.arbitrateTo(io.output)
+
+  when (po.isFiring && po(LAST)) {
+    outputHeader.hdrAllowed := True
+  }
 
   pip.build()
 
