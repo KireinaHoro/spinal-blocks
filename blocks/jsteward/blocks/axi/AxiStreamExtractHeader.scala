@@ -28,6 +28,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
     //        timing requirements between header and output is fragile and will break if
     //        header gets pipelined
     val output = master(Axi4Stream(axisConfig))
+    val outputAck = in(Bool())
     val header = master(Stream(Bits(maxHeaderLen * 8 bits)))
     val statistics = out(new Bundle {
       val headerOnly = Reg(UInt(64 bits))
@@ -178,7 +179,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
   io.output.last := po(LAST)
   po.arbitrateTo(io.output)
 
-  when (po.isFiring && po(LAST)) {
+  when (io.outputAck) {
     outputHeader.hdrAllowed := True
   }
 
