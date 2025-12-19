@@ -4,6 +4,7 @@ import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba4.axis._
 import spinal.lib.misc.pipeline._
+import spinal.lib.fsm._
 
 import scala.language.postfixOps
 
@@ -123,45 +124,54 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
   import storeHeader._
 
   val outputHeader = new pip.Ctrl(2) {
-    val hdrSent = Reg(Bool()) init False
-    val hdrAllowed = Reg(Bool()) init True
-
-    when (up.isValid && !hdrSent) {
-      when(HDR_FULL || (HDR_PARTIAL && LAST)) {
-        when (hdrAllowed) {
+    val fsm = new StateMachine {
+      val idle: State = new State with EntryPoint {
+        whenIsActive {
+          when (up.isValid) {
+            when (HDR_FULL || (HDR_PARTIAL && LAST)) {
+              // we have a header to send
+              io.header.valid := True
+              io.header.payload := HDR_OUT
+              when (io.header.ready) {
+                goto(passBody)
+              } otherwise {
+                haltIt()
+                goto(waitHeaderAck)
+              }
+            }
+          }
+        }
+      }
+      val waitHeaderAck = new State {
+        whenIsActive {
+          haltIt()
           io.header.valid := True
           io.header.payload := HDR_OUT
+          when (io.header.ready) {
+            goto(passBody)
+          }
         }
-        when (!io.header.fire) {
-          haltIt()
-        } otherwise {
-          hdrSent := True
-          when (!LAST) {
-            // header out and this was not the last beat;
-            // block more headers from going out
-            hdrAllowed := False
-          } // header out on the LAST beat, good to emit more
+      }
+      val passBody = new State {
+        whenIsActive {
+          when (up.isFiring && LAST) {
+            when (HDR_INCOMPLETE) {
+              inc(_.incompleteHeader)
+            }.elsewhen (HDR_PARTIAL) {
+              inc(_.partialHeader)
+            }.elsewhen (BEAT_CONSUMED) {
+              inc(_.headerOnly)
+            }.otherwise {
+              inc(_.normalPackets)
+            }
+          }
+          when (io.outputAck) {
+            goto(idle)
+          }
         }
       }
     }
-
-    when (up.isFiring) {
-      when (LAST) {
-        when (HDR_INCOMPLETE) {
-          inc(_.incompleteHeader)
-        }.elsewhen (HDR_PARTIAL) {
-          inc(_.partialHeader)
-        }.elsewhen (BEAT_CONSUMED) {
-          inc(_.headerOnly)
-
-          // if the last beat would've been dropped, allow next header
-          hdrAllowed := True
-        }.otherwise {
-          inc(_.normalPackets)
-        }
-        hdrSent := False
-      }
-    }
+    fsm.build()
 
     // if we consumed the entire beat, do not pass through
     terminateWhen(BEAT_CONSUMED)
@@ -178,10 +188,6 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
   io.output.data := po(DATA)
   io.output.last := po(LAST)
   po.arbitrateTo(io.output)
-
-  when (io.outputAck) {
-    outputHeader.hdrAllowed := True
-  }
 
   pip.build()
 
