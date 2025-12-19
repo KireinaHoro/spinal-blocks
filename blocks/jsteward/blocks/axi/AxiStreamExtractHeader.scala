@@ -36,6 +36,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
       val partialHeader = Reg(UInt(64 bits))
       val incompleteHeader = Reg(UInt(64 bits))
       val normalPackets = Reg(UInt(64 bits))
+      val totalHeaders = Reg(UInt(64 bits))
     })
   }
 
@@ -140,18 +141,12 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
       }
       val emitHeader = new State {
         whenIsActive {
+          haltIt()
           io.header.valid := True
           io.header.payload := HDR_OUT
           when (io.header.ready) {
-            when (BEAT_CONSUMED) {
-              // no payload emitted, no need to wait for body ack
-              goto(idle)
-            } otherwise {
-              haltIt()
-              goto(passBody)
-            }
-          } otherwise {
-            haltIt()
+            inc(_.totalHeaders)
+            goto(passBody)
           }
         }
       }
