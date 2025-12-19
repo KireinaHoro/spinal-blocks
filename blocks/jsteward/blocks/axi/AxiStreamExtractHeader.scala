@@ -29,7 +29,7 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
     //        timing requirements between header and output is fragile and will break if
     //        header gets pipelined
     val output = master(Axi4Stream(axisConfig))
-    val outputAck = in(Bool())
+    val outputAck = in(Bool()) // pulse when FIRST beat has been accepted, i.e. triggered the mux
     val header = master(Stream(Bits(maxHeaderLen * 8 bits)))
     val statistics = out(new Bundle {
       val headerOnly = Reg(UInt(64 bits))
@@ -123,32 +123,35 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
   }
   import storeHeader._
 
+  val outputDispatched = RegInit(False).setWhen(io.outputAck)
   val outputHeader = new pip.Ctrl(2) {
     val fsm = new StateMachine {
       val idle: State = new State with EntryPoint {
         whenIsActive {
+          outputDispatched := False
           when (up.isValid) {
             when (HDR_FULL || (HDR_PARTIAL && LAST)) {
-              // we have a header to send
-              io.header.valid := True
-              io.header.payload := HDR_OUT
-              when (io.header.ready) {
-                goto(passBody)
-              } otherwise {
-                haltIt()
-                goto(waitHeaderAck)
-              }
+              // we have a header to send -- hold off the current beat
+              haltIt()
+              goto(emitHeader)
             }
           }
         }
       }
-      val waitHeaderAck = new State {
+      val emitHeader = new State {
         whenIsActive {
-          haltIt()
           io.header.valid := True
           io.header.payload := HDR_OUT
           when (io.header.ready) {
-            goto(passBody)
+            when (BEAT_CONSUMED) {
+              // no payload emitted, no need to wait for body ack
+              goto(idle)
+            } otherwise {
+              haltIt()
+              goto(passBody)
+            }
+          } otherwise {
+            haltIt()
           }
         }
       }
@@ -164,8 +167,14 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
             }.otherwise {
               inc(_.normalPackets)
             }
+            goto(waitBodyAck)
           }
-          when (io.outputAck) {
+        }
+      }
+      val waitBodyAck = new State {
+        whenIsActive {
+          haltIt()
+          when (outputDispatched) {
             goto(idle)
           }
         }
@@ -177,8 +186,9 @@ case class AxiStreamExtractHeader(axisConfig: Axi4StreamConfig, maxHeaderLen: In
     terminateWhen(BEAT_CONSUMED)
   }
 
-  // insert one extra stage to make sure output is delayed by one cycle after header;
-  // this also interrupts timing paths
+  // insert one extra stage to interrupts timing paths;
+  // timing relation between header and body is ensured by
+  // fsm in outputHeader stage
   new pip.Ctrl(3)
 
   val po = pip.ctrls.values.last.down
