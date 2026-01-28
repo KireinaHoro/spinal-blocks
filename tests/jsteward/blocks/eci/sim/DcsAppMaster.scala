@@ -34,9 +34,9 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
                         dcuIdxWidth: Int = 5, // default 32 DCUs per slice
                        ) {
   // index is unaliased address
-  val clMap = mutable.HashMap[BigInt, DcsStateMachineSim]()
-  val dcsOddAxiMaster = Axi4Master(dcsOdd.axi, clockDomain, "dcsOdd")
-  val dcsEvenAxiMaster = Axi4Master(dcsEven.axi, clockDomain, "dcsEven")
+  private val clMap = mutable.HashMap[BigInt, DcsStateMachineSim]()
+  private val dcsOddAxiMaster = Axi4Master(dcsOdd.axi, clockDomain, "dcsOdd")
+  private val dcsEvenAxiMaster = Axi4Master(dcsEven.axi, clockDomain, "dcsEven")
 
   dcsOddAxiMaster.reset()
   dcsEvenAxiMaster.reset()
@@ -44,9 +44,9 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
   private def log(msg: String): Unit = println(s"DcsAppMaster:\t$msg")
 
   val dcusInProgress = mutable.Seq.fill(1 << (dcuIdxWidth + 1))(0)
-  def dcuToggle(id: Int, flagBit: Int) = dcusInProgress(id) ^= flagBit
-  def dcuCond(id: Int, flagBit: Int) = (dcusInProgress(id) & flagBit) != 0
-  def dcuEnter(id: Int, flagBit: Int) = {
+  private def dcuToggle(id: Int, flagBit: Int) = dcusInProgress(id) ^= flagBit
+  private def dcuCond(id: Int, flagBit: Int) = (dcusInProgress(id) & flagBit) != 0
+  private def dcuEnter(id: Int, flagBit: Int) = {
     // XXX: no need to lock since only one SimThread is running at a time
     if (dcuCond(id, flagBit)) {
       log(f"DCU#$id busy for read, waiting...")
@@ -54,16 +54,16 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
     }
     dcuToggle(id, flagBit)
   }
-  def dcuExit(id: Int, flagBit: Int) = dcuToggle(id, flagBit)
+  private def dcuExit(id: Int, flagBit: Int) = dcuToggle(id, flagBit)
 
-  def dcuRdEnter(id: Int) = dcuEnter(id, 1)
-  def dcuRdExit(id: Int) = dcuExit(id, 1)
-  def dcuInRd(id: Int) = dcuCond(id, 1)
-  def dcuWrEnter(id: Int) = dcuEnter(id, 2)
-  def dcuWrExit(id: Int) = dcuExit(id, 2)
+  private def dcuRdEnter(id: Int) = dcuEnter(id, 1)
+  private def dcuRdExit(id: Int) = dcuExit(id, 1)
+  private def dcuInRd(id: Int) = dcuCond(id, 1)
+  private def dcuWrEnter(id: Int) = dcuEnter(id, 2)
+  private def dcuWrExit(id: Int) = dcuExit(id, 2)
 
-  val dcsInflightLeft = mutable.Seq.fill(2)(maxInflightReqsPerSlice)
-  def dcsInflightEnter(isEven: Boolean) = {
+  private val dcsInflightLeft = mutable.Seq.fill(2)(maxInflightReqsPerSlice)
+  private def dcsInflightEnter(isEven: Boolean) = {
     val dcsId = if (isEven) 0 else 1
     val sliceName = if (isEven) "even" else "odd "
     def cond = dcsInflightLeft(dcsId) <= 0
@@ -73,12 +73,12 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
     }
     dcsInflightLeft(dcsId) -= 1
   }
-  def dcsInflightExit(isEven: Boolean) = {
+  private def dcsInflightExit(isEven: Boolean) = {
     val dcsId = if (isEven) 0 else 1
     dcsInflightLeft(dcsId) += 1
   }
 
-  def genLoadStore(addr: BigInt): ClLoadStore = {
+  private def genLoadStore(addr: BigInt): ClLoadStore = {
     assert(addr % ECI_CL_SIZE_BYTES == 0, "address for cacheline not aligned")
 
     val aliased = aliasAddress(addr)
@@ -123,12 +123,12 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
   }
 
   // operates on aliased address!
-  def findCl(addr: BigInt): DcsStateMachineSim = {
+  private def findCl(addr: BigInt): DcsStateMachineSim = {
     val unaliased = unaliasAddress(addr)
     clMap.getOrElseUpdate(addr, DcsStateMachineSim(f"CL $unaliased%#x", genLoadStore(unaliased)))
   }
 
-  def roundAddr(addr: BigInt): BigInt = addr - (addr & (ECI_CL_SIZE_BYTES - 1))
+  private def roundAddr(addr: BigInt): BigInt = addr - (addr & (ECI_CL_SIZE_BYTES - 1))
 
   /**
    * Read synchronously through the two DCS interfaces, updating the internal cacheline states as it goes along.
@@ -240,6 +240,16 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
            |readback: "${readback.bytesToHex}"
            |""".stripMargin)
     }
+  }
+
+  /**
+   * Force invalidation of a cache line.  Useful for reproducing DC traces captured in HW to catch
+   * corner cases in the 2F2F state machine.
+   * @param addr address of any word in the cacheline to be dropped (will be rounded)
+   */
+  def drop(addr: BigInt): Unit = {
+    val clAddr = roundAddr(addr)
+    findCl(aliasAddress(clAddr)).invalidate()
   }
 
   /**
