@@ -4,6 +4,7 @@
 package build
 
 import mill._, util._, scalalib._, api.BuildCtx
+import build.deps.spinalhdl.SpinalModuleRef
 
 object Versions {
   val scala = Seq("2.13.12")
@@ -11,8 +12,8 @@ object Versions {
 
 trait BlocksBaseModule extends ScalaModule with CrossScalaModule {
   override def scalaVersion = crossValue
-  def sref = build.deps.spinalhdl.SpinalModuleRef(crossValue)
-  def bref = BlocksModuleRef(crossValue)
+  def bref = BlocksModuleRef(crossValue, SpinalModuleRef(crossValue))
+  def sref = bref.sref
 
   override def moduleDeps = Seq(sref.coreMod, sref.libMod, sref.idslpluginMod)
   def scalacOptions = super.scalacOptions() ++ sref.idslpluginMod.pluginOptions()
@@ -47,7 +48,7 @@ trait BlocksTesterModule extends BlocksBaseModule {
 }
 object tester extends Cross[BlocksTesterModule](Versions.scala)
 
-case class BlocksModuleRef(crossVersion: String) {
+case class BlocksModuleRef(crossVersion: String, sref: SpinalModuleRef) {
   def blocksMod = blocks(crossVersion)
   def testerMod = tester(crossVersion)
 }
