@@ -3,7 +3,7 @@
 //| - com.typesafe:config:1.4.2
 package build
 
-import mill._, util._, scalalib._, api.BuildCtx
+import mill._, util._, scalalib._
 import build.deps.spinalhdl.SpinalModuleInfo
 
 trait My { this: BlocksModule =>

@@ -1,6 +1,6 @@
 package build
 
-import mill._, util._, scalalib._, api.BuildCtx
+import mill._, util._, scalalib._
 import build.deps.spinalhdl.SpinalModuleInfo
 
 object Versions {
@@ -21,7 +21,8 @@ trait BlocksModule extends ScalaModule with CrossScalaModule {
 }
 
 trait Blocks extends BlocksModule {
-  def deps = Task.Source(BuildCtx.workspaceRoot / "deps")
+  import os.RelPath._
+  def deps = Task.Source(".."/"deps")
 
   override def resources = Task {
     val outResources = Task.dest / "resources"
