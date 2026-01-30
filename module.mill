@@ -1,0 +1,47 @@
+package build
+
+import mill._, util._, scalalib._, api.BuildCtx
+import build.deps.spinalhdl.SpinalModuleInfo
+
+object Versions {
+  val scala = Seq("2.13.12")
+}
+
+type BlocksModuleInfo = Tuple2[Map[String, ScalaModule], SpinalModuleInfo]
+
+trait BlocksModule extends ScalaModule with CrossScalaModule {
+  def bi: BlocksModuleInfo
+  def bm = bi._1
+  def sm = bi._2._1
+  def sc = bi._2._2()
+
+  override def moduleDeps = Seq(sm("core"), sm("lib"), sm("idslplugin"))
+  def scalacOptions = super.scalacOptions() ++ sc()
+  override def mvnDeps = Seq(mvn"com.lihaoyi::os-lib:0.9.3")
+}
+
+trait Blocks extends BlocksModule {
+  def deps = Task.Source(BuildCtx.workspaceRoot / "deps")
+
+  override def resources = Task {
+    val outResources = Task.dest / "resources"
+    os.makeDir(outResources)
+
+    // copy verilog files to include in resources
+    import os./ // for pattern matching
+    Seq("verilog-axi", "verilog-axis", "wb2axip")
+      .flatMap(dn => os.walk(deps().path/dn/"rtl"))
+      .filter(_.ext == "v")
+      .map(os.copy.matching { case p/dn/"rtl"/f => outResources/dn/"rtl"/f })
+
+    super.resources() :+ PathRef(outResources)
+  }
+
+  object test extends ScalaTests with TestModule.ScalaTest {
+    override def moduleDeps = Seq(sm("tester"), bm("tester"))
+  }
+}
+
+trait BlocksTester extends BlocksModule {
+  override def moduleDeps = super.moduleDeps ++ Seq(sm("tester"), bm("blocks"))
+}

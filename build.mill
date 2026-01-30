@@ -4,53 +4,19 @@
 package build
 
 import mill._, util._, scalalib._, api.BuildCtx
-import build.deps.spinalhdl.SpinalModuleRef
+import build.deps.spinalhdl.SpinalModuleInfo
 
-object Versions {
-  val scala = Seq("2.13.12")
+trait My { this: BlocksModule =>
+  def bi = (Map(
+    "blocks"  -> blocks(crossScalaVersion),
+    "tester"  -> tester(crossScalaVersion),
+  ), SpinalModuleInfo(crossScalaVersion))
 }
 
-trait BlocksBaseModule extends ScalaModule with CrossScalaModule {
-  override def scalaVersion = crossValue
-  def bref = BlocksModuleRef(crossValue, SpinalModuleRef(crossValue))
-  def sref = bref.sref
+trait MyBlocks extends My with Blocks
+trait MyTester extends My with BlocksTester
 
-  override def moduleDeps = Seq(sref.coreMod, sref.libMod, sref.idslpluginMod)
-  def scalacOptions = super.scalacOptions() ++ sref.idslpluginMod.pluginOptions()
-  override def mvnDeps = Seq(mvn"com.lihaoyi::os-lib:0.9.3")
-}
-
-trait BlocksModule extends BlocksBaseModule {
-  def deps = Task.Source(BuildCtx.workspaceRoot / "deps")
-
-  override def resources = Task {
-    val outResources = Task.dest / "resources"
-    os.makeDir(outResources)
-
-    // copy verilog files to include in resources
-    import os./ // for pattern matching
-    Seq("verilog-axi", "verilog-axis", "wb2axip")
-      .flatMap(dn => os.walk(deps().path/dn/"rtl"))
-      .filter(_.ext == "v")
-      .map(os.copy.matching { case p/dn/"rtl"/f => outResources/dn/"rtl"/f })
-
-    super.resources() :+ PathRef(outResources)
-  }
-
-  object test extends ScalaTests with TestModule.ScalaTest {
-    override def moduleDeps = Seq(sref.testerMod, bref.testerMod)
-  }
-}
-object blocks extends Cross[BlocksModule](Versions.scala)
-
-trait BlocksTesterModule extends BlocksBaseModule {
-  override def moduleDeps = super.moduleDeps ++ Seq(sref.testerMod, bref.blocksMod)
-}
-object tester extends Cross[BlocksTesterModule](Versions.scala)
-
-case class BlocksModuleRef(crossVersion: String, sref: SpinalModuleRef) {
-  def blocksMod = blocks(crossVersion)
-  def testerMod = tester(crossVersion)
-}
+object blocks extends Cross[MyBlocks](Versions.scala)
+object tester extends Cross[MyTester](Versions.scala)
 
 // vi: ft=scala
