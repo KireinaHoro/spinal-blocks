@@ -6,7 +6,7 @@ import spinal.lib._
 
 import scala.language.postfixOps
 
-case class LclChannel() extends Bundle {
+case class EciChannel() extends Bundle {
   import jsteward.blocks.eci.EciCmdDefs._
 
   val data = EciWord()
@@ -29,11 +29,11 @@ case class DcsInterface(axiConfig: Axi4Config) extends Bundle with IMasterSlave 
   /** read and write data AXI channel */
   val axi = Axi4(axiConfig)
   /** request channel for clean (LC) and clean-invalidate (LCI) */
-  val cleanMaybeInvReq = Stream(LclChannel())
+  val cleanMaybeInvReq = Stream(EciChannel())
   /** response channel for clean (LCA) and clean-invalidate (LCIA) */
-  val cleanMaybeInvResp = Stream(LclChannel())
+  val cleanMaybeInvResp = Stream(EciChannel())
   /** response channel for unlock (UL) */
-  val unlockResp = Stream(LclChannel())
+  val unlockResp = Stream(EciChannel())
   /** trace interface */
   val tracing = Vec(Flow(TracePort()), 2)
 

@@ -282,7 +282,7 @@ case class DcsAppMaster(dcsEven: DcsInterface, dcsOdd: DcsInterface, clockDomain
   }
 
   Seq(dcsEven, dcsOdd).zipWithIndex.foreach { case (dcs, idx) =>
-    val respQueue = mutable.Queue[LclChannel => Unit]()
+    val respQueue = mutable.Queue[EciChannel => Unit]()
 
     StreamReadyRandomizer(dcs.cleanMaybeInvReq, clockDomain)
     StreamMonitorThreadful(dcs.cleanMaybeInvReq, clockDomain) { req =>
