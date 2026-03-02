@@ -1,0 +1,22 @@
+//| mill-allow-nested-build-mill: true
+//| mvnDeps:
+//| - com.typesafe:config:1.4.2
+package build
+
+import mill._, util._, scalalib._
+import build.deps.spinalhdl.SpinalModuleInfo
+
+trait My { this: BlocksModule =>
+  def bi = (Map(
+    "blocks"  -> blocks(crossScalaVersion),
+    "tester"  -> tester(crossScalaVersion),
+  ), SpinalModuleInfo(crossScalaVersion))
+}
+
+trait MyBlocks extends My with Blocks
+trait MyTester extends My with BlocksTester
+
+object blocks extends Cross[MyBlocks](Versions.scala)
+object tester extends Cross[MyTester](Versions.scala)
+
+// vi: ft=scala
