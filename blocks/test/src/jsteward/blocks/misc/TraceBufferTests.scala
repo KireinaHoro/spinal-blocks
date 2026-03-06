@@ -18,6 +18,8 @@ class TraceBufferTests extends DutSimFunSuite[TraceBuffer[UInt]] {
 
   def setup(implicit dut: TraceBuffer[UInt]) = {
     SimTimeout(40000)
+    dut.dump #= false
+
     dut.clockDomain.forkStimulus(period = 4)
 
     val eventQs = Array.fill(dut.numInputs)(mutable.Queue[Long]())
@@ -42,6 +44,8 @@ class TraceBufferTests extends DutSimFunSuite[TraceBuffer[UInt]] {
     val evQs = setup
     val toCheck = mutable.HashSet[(Long, Int)]()
     val total = 256
+    
+    waitUntil(dut.ready.toBoolean)
 
     0 until total foreach { idx =>
       val v = simRandom.nextLong(1L << 32)
@@ -49,6 +53,12 @@ class TraceBufferTests extends DutSimFunSuite[TraceBuffer[UInt]] {
 
       toCheck.add((v, port))
       println(f"Pushing event $v%#x to port $port")
+      
+      if (idx % 16 == 15) {
+        // throttle send so we don't lose samples
+        println(f"Waiting for events to drain")
+        sleepCycles(40)
+      }
 
       evQs(port).enqueue(v)
     }
@@ -59,13 +69,22 @@ class TraceBufferTests extends DutSimFunSuite[TraceBuffer[UInt]] {
     // read out what's in the buffer
     dut.dump #= true
     dut.clockDomain.waitActiveEdge(2)
-    0 until total foreach { idx =>
+    while (toCheck.nonEmpty) {
+      assert(!dut.sampleLost.toBoolean)
+
       val ev = dut.traceOut.event.toLong
       val src = dut.traceOut.src.toInt
       val ts = dut.traceOut.ts.toBigInt
 
       println(s"Received ev=$ev from port $src (ts=$ts)")
-      assert(toCheck.remove((ev, src)))
+      
+      val found = toCheck.remove((ev, src))
+      if (!found) {
+        println(f"Event $ev%#x from port $src not found!")
+        println(s"Events left: ${toCheck.mkString("; ")}")
+        fail()
+      }
+
       dut.clockDomain.waitActiveEdge()
     }
   }

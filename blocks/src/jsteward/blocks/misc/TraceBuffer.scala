@@ -28,6 +28,8 @@ case class TraceBuffer[T <: Data](
   val traceIn = Vec(slave(Flow(payloadType)), numInputs)
   val traceOut = out(CapturedEvent())
   val dump = in(Bool())
+  // only for simulation
+  val ready = out(CombInit(True))
   val sampleLost = out(RegInit(False))
   traceOut.clearAll()
 
@@ -84,7 +86,11 @@ case class TraceBuffer[T <: Data](
 
   val captureFsm = new StateMachine {
     val init: State = new State with EntryPoint {
+      onEntry {
+        ready := False
+      }
       whenIsActive {
+        ready := False
         writeEn := True
         writeData.clearAll()
         captureAddr.increment()
