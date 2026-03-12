@@ -45,8 +45,6 @@ class TraceBufferTests extends DutSimFunSuite[TraceBuffer[UInt]] {
     val toCheck = mutable.HashSet[(Long, Int)]()
     val total = 256
     
-    waitUntil(dut.ready.toBoolean)
-
     0 until total foreach { idx =>
       val v = simRandom.nextLong(1L << 32)
       val port = idx % 6

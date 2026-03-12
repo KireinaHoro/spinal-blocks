@@ -28,13 +28,16 @@ case class TraceBuffer[T <: Data](
   val traceIn = Vec(slave(Flow(payloadType)), numInputs)
   val traceOut = out(CapturedEvent())
   val dump = in(Bool())
-  // only for simulation
-  val ready = out(CombInit(True))
   val sampleLost = out(RegInit(False))
   traceOut.clearAll()
 
   val cycleCount = CounterFreeRun(timestampWidth bits)
   val storage = Mem(CapturedEvent(), numSlots)
+  
+  GenerationFlags simulation {
+    // BRAM is initialized to 0 anyways
+    storage.init(Seq.fill(numSlots)(CapturedEvent().clearAll()))
+  }
 
   val dumpAddr, captureAddr = Counter(numSlots)
   val readoutFsm = new StateMachine {
@@ -85,21 +88,7 @@ case class TraceBuffer[T <: Data](
   storage.write(captureAddr, writeData, writeEn)
 
   val captureFsm = new StateMachine {
-    val init: State = new State with EntryPoint {
-      onEntry {
-        ready := False
-      }
-      whenIsActive {
-        ready := False
-        writeEn := True
-        writeData.clearAll()
-        captureAddr.increment()
-        when (captureAddr.willOverflow) {
-          goto(idle)
-        }
-      }
-    }
-    val idle: State = new State {
+    val idle: State = new State with EntryPoint {
       whenIsActive {
         bufferedPorts.ready := True
         when (bufferedPorts.valid) {
