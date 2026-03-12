@@ -36,7 +36,9 @@ case class TraceBuffer[T <: Data](
   
   GenerationFlags simulation {
     // BRAM is initialized to 0 anyways
-    storage.init(Seq.fill(numSlots)(CapturedEvent().clearAll()))
+    val initVal = CapturedEvent()
+    initVal.flatten.foreach(_ := U(0))
+    storage.init(Seq.fill(numSlots)(initVal))
   }
 
   val dumpAddr, captureAddr = Counter(numSlots)

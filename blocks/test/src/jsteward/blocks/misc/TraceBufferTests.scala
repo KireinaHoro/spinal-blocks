@@ -10,7 +10,7 @@ import jsteward.blocks.DutSimFunSuite
 
 class TraceBufferTests extends DutSimFunSuite[TraceBuffer[UInt]] {
   val dut = SimConfig
-    .withConfig(SpinalConfig())
+    .withConfig(SpinalConfig().includeSimulation)
     .withFstWave
     .withVerilator
     .allOptimisation
@@ -67,7 +67,12 @@ class TraceBufferTests extends DutSimFunSuite[TraceBuffer[UInt]] {
     // read out what's in the buffer
     dut.dump #= true
     dut.clockDomain.waitActiveEdge(2)
+
+    var samplesLeft = dut.numSlots
     while (toCheck.nonEmpty) {
+      assert(samplesLeft > 0)
+      samplesLeft -= 1
+
       assert(!dut.sampleLost.toBoolean)
 
       val ev = dut.traceOut.event.toLong
@@ -84,6 +89,13 @@ class TraceBufferTests extends DutSimFunSuite[TraceBuffer[UInt]] {
       }
 
       dut.clockDomain.waitActiveEdge()
+    }
+    
+    // check that no garbage trace is emitted
+    while (samplesLeft > 0) {
+      assert(dut.traceOut.ts.toBigInt == 0)
+      dut.clockDomain.waitActiveEdge()
+      samplesLeft -= 1
     }
   }
 }
