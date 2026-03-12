@@ -37,7 +37,11 @@ case class TraceBuffer[T <: Data](
   GenerationFlags simulation {
     // BRAM is initialized to 0 anyways
     val initVal = CapturedEvent()
-    initVal.flatten.foreach(_ := U(0))
+    initVal.flatten.foreach {
+      case v: Bool => v := False
+      case v: UInt => v := U(0)
+      case v: Bits => v := B(0)
+    }
     storage.init(Seq.fill(numSlots)(initVal))
   }
 
