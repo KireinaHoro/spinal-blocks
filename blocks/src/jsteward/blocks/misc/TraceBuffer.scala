@@ -34,17 +34,6 @@ case class TraceBuffer[T <: Data](
   val cycleCount = CounterFreeRun(timestampWidth bits)
   val storage = Mem(CapturedEvent(), numSlots)
   
-  GenerationFlags simulation {
-    // BRAM is initialized to 0 anyways
-    val initVal = CapturedEvent()
-    initVal.flatten.foreach {
-      case v: Bool => v := False
-      case v: UInt => v := U(0)
-      case v: Bits => v := B(0)
-    }
-    storage.init(Seq.fill(numSlots)(initVal))
-  }
-
   val dumpAddr, captureAddr = Counter(numSlots)
   val readoutFsm = new StateMachine {
     val idle: State = new State with EntryPoint {
