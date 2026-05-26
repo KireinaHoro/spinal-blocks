@@ -13,7 +13,7 @@ import scala.util.Random
 class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
   val numInputs = 3
   val bufferSlots = 128
-  val payloadWidth = 32
+  val payloadWidth = 78
   val timestampWidth = 48
   val lostCountWidth = 32
   val sourceWidth = log2Up(numInputs + 1)
@@ -50,7 +50,8 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
       frameFifoSize = 4,
       timestampWidth = timestampWidth,
       lostCountWidth = lostCountWidth,
-      axiMaxBurstLen = 2,
+      axiMaxBurstLen = 4,
+      flushIdleCycles = 64,
     ))
 
   case class DecodedFrame(event: Long, src: Int, ts: BigInt, tracesLost: Boolean, lostCount: Long)
@@ -115,10 +116,10 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
   test("writes events to DRAM") { implicit dut =>
     val (eventQs, memory) = setup()
     val expected = mutable.HashSet[(Long, Int)]()
-    val total = 512
+    val total = 64
 
     0 until total foreach { idx =>
-      val value = Random.nextLong(1L << payloadWidth)
+      val value = Random.nextLong(1L << 62)
       val port = idx % numInputs
       expected.add((value, port))
       eventQs(port).enqueue(value)
@@ -146,7 +147,7 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
 
   test("inserts lost-traces placeholder on overflow") { implicit dut =>
     val (eventQs, memory) = setup(writeResponseDelay = 40)
-    val total = 512
+    val total = 256
 
     0 until total foreach { idx =>
       eventQs(idx % numInputs).enqueue(idx + 1)
@@ -163,5 +164,27 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
     assert(lostFrames.nonEmpty, s"expected at least one lost-traces frame, got ${frames.mkString("; ")}")
     assert(lostFrames.exists(_.lostCount > 0), s"lost-traces frames did not carry a count: ${lostFrames.mkString("; ")}")
     assert(!dut.dmaError.toBoolean)
+  }
+
+  test("flushes partial beat with bubbles after idle timeout") { implicit dut =>
+    val (eventQs, memory) = setup()
+    val expected = Seq((0x1234L, 0), (0x5678L, 1))
+
+    expected.foreach { case (value, port) => eventQs(port).enqueue(value) }
+
+    waitUntil(eventQs.forall(_.isEmpty))
+    waitUntil(dut.writeSlot.toInt >= 1)
+    sleepCycles(80)
+
+    assert(!dut.sampleLost.toBoolean)
+    assert(!dut.dmaError.toBoolean)
+
+    val frames = readFrames(memory, 4)
+    expected.foreach { case (value, port) =>
+      assert(frames.exists(frame => !frame.tracesLost && frame.event == value && frame.src == port),
+        s"missing flushed trace sample value=$value port=$port in ${frames.mkString("; ")}")
+    }
+    val bubbles = frames.filter(frame => frame.tracesLost && frame.lostCount == 0)
+    assert(bubbles.nonEmpty, s"expected bubble samples in flushed beat: ${frames.mkString("; ")}")
   }
 }

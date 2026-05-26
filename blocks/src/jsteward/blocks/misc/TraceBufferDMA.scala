@@ -14,7 +14,8 @@ import scala.language.postfixOps
   *
   * Each trace sample contains the opaque payload, a source id, and a timestamp.
   * Samples are packed as a bitstream into full AXI beats before they are passed
-  * to the DMA writer.
+  * to the DMA writer. If a partial beat is idle long enough, the packer pads it
+  * with marker samples so the incomplete beat can still be flushed to memory.
   */
 case class TraceBufferDMA[T <: Data](
                                       payloadType: HardType[T],
@@ -27,9 +28,11 @@ case class TraceBufferDMA[T <: Data](
                                       timestampWidth: Int = 64,
                                       lostCountWidth: Int = 32,
                                       axiMaxBurstLen: Int = 16,
+                                      flushIdleCycles: Int = 1024,
                                     ) extends Component {
   require(numInputs > 0, "TraceBufferDMA needs at least one trace input")
   require(axiMaxBurstLen > 1, "TraceBufferDMA needs at least two beats per DMA burst")
+  require(flushIdleCycles > 0, "TraceBufferDMA flush timeout must be positive")
   require(axiConfig.dataWidth % 8 == 0, "AXI data width must be byte-aligned")
   require((axiBufferBase & (axiConfig.dataWidth / 8 - 1)) == 0, "AXI buffer base must be AXI-word aligned")
   require((axiBufferSize & (axiConfig.dataWidth / 8 - 1)) == 0, "AXI buffer size must be AXI-word aligned")
@@ -41,11 +44,12 @@ case class TraceBufferDMA[T <: Data](
   val busBytes = axiConfig.dataWidth / 8
   val busByteShift = log2Up(busBytes)
   val payloadWidth = payloadType().getBitsWidth
-  // Reserve the all-ones source id for the lost-samples count frame.
+  // Reserve the all-ones source id for marker samples: non-zero payload reports
+  // lost samples, while zero payload is a bubble used to flush a partial beat.
   val sourceWidth = log2Up(numInputs + 1)
   val lostSourceId = (BigInt(1) << sourceWidth) - 1
   val sampleWidth = payloadWidth + sourceWidth + timestampWidth
-  require(numInputs <= lostSourceId, "the all-ones source id is reserved for lost-samples count frames")
+  require(numInputs <= lostSourceId, "the all-ones source id is reserved for marker frames")
   require(lostCountWidth <= payloadWidth, "lost count must fit in the trace payload field")
   require(sampleWidth <= axiMaxBurstLen * axiConfig.dataWidth, "trace sample is wider than the maximum AXI burst")
   val bufferSlotsBigInt = axiBufferSize / busBytes
@@ -67,6 +71,7 @@ case class TraceBufferDMA[T <: Data](
   val writeSlot = out(UInt(log2Up(bufferSlots) bits))
 
   val maxBeatsPerDesc = scala.math.min(axiMaxBurstLen, bufferSlots)
+  val beatFifoSize = maxBeatsPerDesc * 2
   val maxDescBytes = maxBeatsPerDesc * busBytes
   val lenWidth = log2Up(maxDescBytes + 1)
   val tagWidth = 1
@@ -162,42 +167,74 @@ case class TraceBufferDMA[T <: Data](
     }
   }
 
-  val framesToDma = frameSource.queue(frameFifoSize)
+  val frameFifo = StreamFifo(CapturedFrame(), frameFifoSize)
+  frameFifo.io.push << frameSource
+  val framesToPacker = frameFifo.io.pop
+
+  val flushIdleCounter = Reg(UInt(log2Up(flushIdleCycles + 1) bits)) init 0
+  val paddingActive = RegInit(False)
+
+  def packFields(payload: Bits, src: UInt, ts: UInt): Bits = {
+    val ret = Bits(sampleWidth bits)
+    ret(payloadWidth - 1 downto 0) := payload
+    ret(payloadWidth + sourceWidth - 1 downto payloadWidth) := src.asBits
+    ret(sampleWidth - 1 downto payloadWidth + sourceWidth) := ts.asBits
+    ret
+  }
 
   def packSample(frame: CapturedFrame): Bits = {
-    val ret = Bits(sampleWidth bits)
     val normalPayload = Bits(payloadWidth bits)
     val lostPayload = Bits(payloadWidth bits)
-    ret.clearAll()
     normalPayload := frame.event.asBits.resized
     lostPayload := frame.lostCount.asBits.resized
-
-    ret(payloadWidth - 1 downto 0) := Mux(frame.tracesLost, lostPayload, normalPayload)
-    ret(payloadWidth + sourceWidth - 1 downto payloadWidth) := frame.src.asBits
-    ret(sampleWidth - 1 downto payloadWidth + sourceWidth) := frame.ts.asBits
-    ret
+    packFields(Mux(frame.tracesLost, lostPayload, normalPayload), frame.src, frame.ts)
   }
 
   val packedBeats = Stream(Bits(axiConfig.dataWidth bits))
   val packerWidth = axiConfig.dataWidth + sampleWidth
   val packerData = Reg(Bits(packerWidth bits)) init 0
   val packerBits = Reg(UInt(log2Up(packerWidth + 1) bits)) init 0
-  val packedSample = packSample(framesToDma.payload)
+  val packedSample = packSample(framesToPacker.payload)
+  val bubblePayload = B(0, payloadWidth bits)
+  val bubbleSample = packFields(bubblePayload, U(lostSourceId, sourceWidth bits), cycleCount.value)
   val beatWillFire = packedBeats.valid && packedBeats.ready
   val bitsAfterBeat = packerBits - Mux(beatWillFire, U(axiConfig.dataWidth, packerBits.getWidth bits), U(0, packerBits.getWidth bits))
   val roomAfterBeat = U(packerWidth, packerBits.getWidth + 1 bits) - bitsAfterBeat.resize(packerBits.getWidth + 1)
+  val needBubble = paddingActive && bitsAfterBeat =/= 0 && bitsAfterBeat < axiConfig.dataWidth
+  val bubbleFire = needBubble && roomAfterBeat >= sampleWidth
+  val appendSample = framesToPacker.fire || bubbleFire
+  val sampleToAppend = Mux(bubbleFire, bubbleSample, packedSample)
 
   packedBeats.valid := packerBits >= axiConfig.dataWidth
   packedBeats.payload := packerData(axiConfig.dataWidth - 1 downto 0)
-  packedBeats.ready := False
-  framesToDma.ready := roomAfterBeat >= sampleWidth
+  framesToPacker.ready := !paddingActive && roomAfterBeat >= sampleWidth
 
-  when(beatWillFire || framesToDma.fire) {
-    val dataAfterBeat = Mux(beatWillFire, (packerData.asUInt >> axiConfig.dataWidth).resize(packerWidth).asBits, packerData)
-    val appendedSample = (packedSample.asUInt.resize(packerWidth) |<< bitsAfterBeat).asBits
-    packerData := Mux(framesToDma.fire, dataAfterBeat | appendedSample, dataAfterBeat)
-    packerBits := bitsAfterBeat + Mux(framesToDma.fire, U(sampleWidth, packerBits.getWidth bits), U(0, packerBits.getWidth bits))
+  val shouldCountIdle = packerBits =/= 0 && frameFifo.io.occupancy === 0 && !paddingActive
+  when(frameSource.fire || framesToPacker.fire || !shouldCountIdle) {
+    flushIdleCounter := 0
+  } elsewhen(flushIdleCounter =/= flushIdleCycles) {
+    flushIdleCounter := flushIdleCounter + 1
   }
+
+  when(flushIdleCounter === flushIdleCycles && shouldCountIdle) {
+    paddingActive := True
+  }
+
+  when(beatWillFire || appendSample) {
+    val dataAfterBeat = Mux(beatWillFire, (packerData.asUInt >> axiConfig.dataWidth).resize(packerWidth).asBits, packerData)
+    val appendedSample = (sampleToAppend.asUInt.resize(packerWidth) |<< bitsAfterBeat).asBits
+    val nextPackerBits = bitsAfterBeat + Mux(appendSample, U(sampleWidth, packerBits.getWidth bits), U(0, packerBits.getWidth bits))
+    packerData := Mux(appendSample, dataAfterBeat | appendedSample, dataAfterBeat)
+    packerBits := nextPackerBits
+    when(paddingActive && nextPackerBits === 0) {
+      paddingActive := False
+    }
+  }
+
+  val beatFifo = StreamFifo(Bits(axiConfig.dataWidth bits), beatFifoSize)
+  beatFifo.io.push << packedBeats
+  val beatsToDma = beatFifo.io.pop
+  beatsToDma.ready := False
 
   val axiDma = new AxiDma(dmaConfig)
   axiDma.io.m_axi >> axi
@@ -218,7 +255,7 @@ case class TraceBufferDMA[T <: Data](
   val slot = Reg(UInt(log2Up(bufferSlots) bits)) init 0
   writeSlot := slot
 
-  val beatsInDesc = Reg(UInt(log2Up(maxBeatsPerDesc + 1) bits)) init maxBeatsPerDesc
+  val beatsInDesc = Reg(UInt(log2Up(maxBeatsPerDesc + 1) bits)) init 0
   val beatInDesc = Reg(UInt(log2Up(maxBeatsPerDesc) bits)) init 0
 
   val slotsUntilWrap = U(bufferSlots, log2Up(bufferSlots + 1) bits) - slot.resize(log2Up(bufferSlots + 1))
@@ -227,6 +264,12 @@ case class TraceBufferDMA[T <: Data](
   when(slotsUntilWrap > maxBeatsPerDesc) {
     nextDescBeats := maxBeatsPerDesc
   }
+  val queuedBeats = beatFifo.io.occupancy
+  val descBeats = UInt(log2Up(maxBeatsPerDesc + 1) bits)
+  descBeats := queuedBeats.resized
+  when(queuedBeats > nextDescBeats) {
+    descBeats := nextDescBeats
+  }
 
   val currentAddress = (U(axiBufferBase, axiConfig.addressWidth bits) +
     (slot.resize(axiConfig.addressWidth) << busByteShift)).resized
@@ -234,12 +277,12 @@ case class TraceBufferDMA[T <: Data](
   val dmaFsm = new StateMachine {
     val issueDesc: State = new State with EntryPoint {
       whenIsActive {
-        axiDma.s_axis_write_desc.valid := True
+        axiDma.s_axis_write_desc.valid := descBeats =/= 0
         axiDma.s_axis_write_desc.addr := currentAddress
-        axiDma.s_axis_write_desc.len := (nextDescBeats.resize(lenWidth) << busByteShift).resized
+        axiDma.s_axis_write_desc.len := (descBeats.resize(lenWidth) << busByteShift).resized
         axiDma.s_axis_write_desc.tag.clearAll()
-        when(axiDma.s_axis_write_desc.ready) {
-          beatsInDesc := nextDescBeats
+        when(axiDma.s_axis_write_desc.fire) {
+          beatsInDesc := descBeats
           beatInDesc := 0
           goto(writeFrames)
         }
@@ -248,11 +291,11 @@ case class TraceBufferDMA[T <: Data](
 
     val writeFrames: State = new State {
       whenIsActive {
-        axiDma.s_axis_write_data.valid := packedBeats.valid
-        axiDma.s_axis_write_data.payload.data := packedBeats.payload
+        axiDma.s_axis_write_data.valid := beatsToDma.valid
+        axiDma.s_axis_write_data.payload.data := beatsToDma.payload
         axiDma.s_axis_write_data.payload.keep.setAll()
         axiDma.s_axis_write_data.payload.last := beatInDesc === (beatsInDesc - 1).resized
-        packedBeats.ready := axiDma.s_axis_write_data.ready
+        beatsToDma.ready := axiDma.s_axis_write_data.ready
 
         when(axiDma.s_axis_write_data.fire) {
           when(beatInDesc === (beatsInDesc - 1).resized) {
