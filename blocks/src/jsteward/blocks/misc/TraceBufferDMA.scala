@@ -19,24 +19,30 @@ import scala.language.postfixOps
 case class TraceBufferDMA[T <: Data](
                                       payloadType: HardType[T],
                                       numInputs: Int,
-                                      numSlots: Int,
                                       axiConfig: Axi4Config,
-                                      baseAddress: BigInt = 0,
+                                      axiBufferBase: BigInt,
+                                      axiBufferSize: BigInt,
                                       burstFifoSize: Int = 16,
                                       frameFifoSize: Int = 32,
                                       timestampWidth: Int = 64,
                                       lostCountWidth: Int = 32,
                                       axiMaxBurstLen: Int = 16,
-                                      lenWidth: Int = 20,
-                                      tagWidth: Int = 8,
                                     ) extends Component {
   require(numInputs > 0, "TraceBufferDMA needs at least one trace input")
-  require(numSlots > 1, "TraceBufferDMA needs at least two DRAM slots")
   require(axiMaxBurstLen > 1, "TraceBufferDMA needs at least two beats per DMA burst")
   require(axiConfig.dataWidth % 8 == 0, "AXI data width must be byte-aligned")
-  require((baseAddress & (axiConfig.dataWidth / 8 - 1)) == 0, "base address must be AXI-word aligned")
+  require((axiBufferBase & (axiConfig.dataWidth / 8 - 1)) == 0, "AXI buffer base must be AXI-word aligned")
+  require((axiBufferSize & (axiConfig.dataWidth / 8 - 1)) == 0, "AXI buffer size must be AXI-word aligned")
+  require(axiBufferSize >= 2 * (axiConfig.dataWidth / 8), "TraceBufferDMA needs at least two AXI words of buffer space")
+  require(axiBufferBase + axiBufferSize <= (BigInt(1) << axiConfig.addressWidth), "AXI buffer exceeds address space")
   assert(!axiConfig.useQos, "axi dma does not support qos")
   assert(!axiConfig.useRegion, "axi dma does not support region")
+
+  val busBytes = axiConfig.dataWidth / 8
+  val busByteShift = log2Up(busBytes)
+  val bufferSlotsBigInt = axiBufferSize / busBytes
+  require(bufferSlotsBigInt <= Int.MaxValue, "AXI buffer size is too large")
+  val bufferSlots = bufferSlotsBigInt.toInt
 
   case class CapturedFrame() extends Bundle {
     val event = payloadType()
@@ -50,15 +56,14 @@ case class TraceBufferDMA[T <: Data](
   val axi = master(Axi4(axiConfig))
   val sampleLost = out(RegInit(False))
   val dmaError = out(RegInit(False))
-  val writeSlot = out(UInt(log2Up(numSlots) bits))
+  val writeSlot = out(UInt(log2Up(bufferSlots) bits))
 
-  val busBytes = axiConfig.dataWidth / 8
-  val busByteShift = log2Up(busBytes)
-  val maxFramesPerDesc = scala.math.min(axiMaxBurstLen, numSlots)
+  val maxFramesPerDesc = scala.math.min(axiMaxBurstLen, bufferSlots)
+  val maxDescBytes = maxFramesPerDesc * busBytes
+  val lenWidth = log2Up(maxDescBytes + 1)
+  val tagWidth = 1
   val frameWidth = payloadType().getBitsWidth + log2Up(numInputs) + timestampWidth + 1 + lostCountWidth
   require(frameWidth <= axiConfig.dataWidth, s"captured trace frame is $frameWidth bits, wider than AXI data width ${axiConfig.dataWidth}")
-  require((BigInt(maxFramesPerDesc) * busBytes) < (BigInt(1) << lenWidth),
-    s"maximum DMA descriptor length does not fit in lenWidth=$lenWidth")
 
   val axisConfig = Axi4StreamConfig(
     dataWidth = busBytes,
@@ -169,20 +174,20 @@ case class TraceBufferDMA[T <: Data](
   axiDma.s_axis_write_data.payload.clearAll()
   framesToDma.ready := False
 
-  val slot = Reg(UInt(log2Up(numSlots) bits)) init 0
+  val slot = Reg(UInt(log2Up(bufferSlots) bits)) init 0
   writeSlot := slot
 
   val framesInDesc = Reg(UInt(log2Up(maxFramesPerDesc + 1) bits)) init maxFramesPerDesc
   val frameInDesc = Reg(UInt(log2Up(maxFramesPerDesc) bits)) init 0
 
-  val slotsUntilWrap = U(numSlots, log2Up(numSlots + 1) bits) - slot.resize(log2Up(numSlots + 1))
+  val slotsUntilWrap = U(bufferSlots, log2Up(bufferSlots + 1) bits) - slot.resize(log2Up(bufferSlots + 1))
   val nextDescFrames = UInt(log2Up(maxFramesPerDesc + 1) bits)
   nextDescFrames := slotsUntilWrap.resized
   when(slotsUntilWrap > maxFramesPerDesc) {
     nextDescFrames := maxFramesPerDesc
   }
 
-  val currentAddress = (U(baseAddress, axiConfig.addressWidth bits) +
+  val currentAddress = (U(axiBufferBase, axiConfig.addressWidth bits) +
     (slot.resize(axiConfig.addressWidth) << busByteShift)).resized
 
   def packFrame(frame: CapturedFrame): Bits = {
@@ -226,8 +231,8 @@ case class TraceBufferDMA[T <: Data](
 
         when(axiDma.s_axis_write_data.fire) {
           when(frameInDesc === (framesInDesc - 1).resized) {
-            val nextSlot = slot.resize(log2Up(numSlots + 1)) + framesInDesc.resize(log2Up(numSlots + 1))
-            when(nextSlot === numSlots) {
+            val nextSlot = slot.resize(log2Up(bufferSlots + 1)) + framesInDesc.resize(log2Up(bufferSlots + 1))
+            when(nextSlot === bufferSlots) {
               slot := 0
             } otherwise {
               slot := nextSlot.resized

@@ -12,13 +12,14 @@ import scala.util.Random
 
 class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
   val numInputs = 3
-  val numSlots = 128
+  val bufferSlots = 128
   val payloadWidth = 32
   val timestampWidth = 64
   val lostCountWidth = 16
   val axiDataWidth = 128
   val axiBytes = axiDataWidth / 8
-  val baseAddress = BigInt(0x1000)
+  val axiBufferBase = BigInt(0x1000)
+  val axiBufferSize = BigInt(bufferSlots * axiBytes)
 
   val axiConfig = Axi4Config(
     addressWidth = 16,
@@ -39,16 +40,14 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
     .compile(TraceBufferDMA(
       UInt(payloadWidth bits),
       numInputs = numInputs,
-      numSlots = numSlots,
       axiConfig = axiConfig,
-      baseAddress = baseAddress,
+      axiBufferBase = axiBufferBase,
+      axiBufferSize = axiBufferSize,
       burstFifoSize = 4,
       frameFifoSize = 4,
       timestampWidth = timestampWidth,
       lostCountWidth = lostCountWidth,
       axiMaxBurstLen = 4,
-      lenWidth = 12,
-      tagWidth = 1,
     ))
 
   case class DecodedFrame(event: Long, src: Int, ts: BigInt, tracesLost: Boolean, lostCount: Long)
@@ -103,7 +102,7 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
 
   def readFrames(memory: AxiMemorySim, count: Int): Seq[DecodedFrame] =
     (0 until count).map { idx =>
-      decode(memory.memory.readBigInt((baseAddress + idx * axiBytes).toLong, axiBytes))
+      decode(memory.memory.readBigInt((axiBufferBase + idx * axiBytes).toLong, axiBytes))
     }
 
   test("writes events to DRAM") { implicit dut =>
