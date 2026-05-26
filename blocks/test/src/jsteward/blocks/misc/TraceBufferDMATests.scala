@@ -14,9 +14,12 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
   val numInputs = 3
   val bufferSlots = 128
   val payloadWidth = 32
-  val timestampWidth = 64
-  val lostCountWidth = 16
-  val axiDataWidth = 128
+  val timestampWidth = 48
+  val lostCountWidth = 32
+  val sourceWidth = log2Up(numInputs + 1)
+  val lostSourceId = (BigInt(1) << sourceWidth) - 1
+  val sampleWidth = payloadWidth + sourceWidth + timestampWidth
+  val axiDataWidth = 512
   val axiBytes = axiDataWidth / 8
   val axiBufferBase = BigInt(0x1000)
   val axiBufferSize = BigInt(bufferSlots * axiBytes)
@@ -47,7 +50,7 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
       frameFifoSize = 4,
       timestampWidth = timestampWidth,
       lostCountWidth = lostCountWidth,
-      axiMaxBurstLen = 4,
+      axiMaxBurstLen = 2,
     ))
 
   case class DecodedFrame(event: Long, src: Int, ts: BigInt, tracesLost: Boolean, lostCount: Long)
@@ -56,24 +59,21 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
     (value >> offset) & ((BigInt(1) << width) - 1)
 
   def decode(word: BigInt): DecodedFrame = {
-    val srcWidth = log2Up(numInputs)
-    val eventOffset = 0
-    val srcOffset = eventOffset + payloadWidth
-    val tsOffset = srcOffset + srcWidth
-    val lostOffset = tsOffset + timestampWidth
-    val lostCountOffset = lostOffset + 1
+    val payloadOffset = 0
+    val srcOffset = payloadOffset + payloadWidth
+    val tsOffset = srcOffset + sourceWidth
 
     DecodedFrame(
-      event = bits(word, eventOffset, payloadWidth).toLong,
-      src = bits(word, srcOffset, srcWidth).toInt,
+      event = bits(word, payloadOffset, payloadWidth).toLong,
+      src = bits(word, srcOffset, sourceWidth).toInt,
       ts = bits(word, tsOffset, timestampWidth),
-      tracesLost = bits(word, lostOffset, 1) == 1,
-      lostCount = bits(word, lostCountOffset, lostCountWidth).toLong,
+      tracesLost = bits(word, srcOffset, sourceWidth) == lostSourceId,
+      lostCount = bits(word, payloadOffset, lostCountWidth).toLong,
     )
   }
 
   def setup(writeResponseDelay: Int = 0)(implicit dut: TraceBufferDMA[UInt]) = {
-    SimTimeout(80000)
+    SimTimeout(200000)
 
     dut.clockDomain.forkStimulus(period = 4)
     val memory = AxiMemorySim(
@@ -101,14 +101,21 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
   }
 
   def readFrames(memory: AxiMemorySim, count: Int): Seq[DecodedFrame] =
-    (0 until count).map { idx =>
-      decode(memory.memory.readBigInt((axiBufferBase + idx * axiBytes).toLong, axiBytes))
+    {
+      val bytes = ((count * sampleWidth + 7) / 8).max(axiBytes)
+      val allData = memory.memory.readBigInt(axiBufferBase.toLong, bytes)
+      (0 until count).map { idx =>
+        decode(bits(allData, idx * sampleWidth, sampleWidth))
+      }
     }
+
+  def beatsForSamples(count: Int): Int =
+    (count * sampleWidth) / axiDataWidth
 
   test("writes events to DRAM") { implicit dut =>
     val (eventQs, memory) = setup()
     val expected = mutable.HashSet[(Long, Int)]()
-    val total = 24
+    val total = 512
 
     0 until total foreach { idx =>
       val value = Random.nextLong(1L << payloadWidth)
@@ -122,7 +129,7 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
     }
 
     waitUntil(eventQs.forall(_.isEmpty))
-    waitUntil(dut.writeSlot.toInt >= total)
+    waitUntil(dut.writeSlot.toInt >= beatsForSamples(total))
     sleepCycles(80)
 
     assert(!dut.sampleLost.toBoolean)
@@ -131,7 +138,6 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
     val frames = readFrames(memory, total)
     frames.foreach { frame =>
       assert(!frame.tracesLost, s"unexpected lost-traces frame: $frame")
-      assert(frame.lostCount == 0)
       assert(frame.ts > 0)
       assert(expected.remove((frame.event, frame.src)), s"unexpected trace frame: $frame")
     }
@@ -140,7 +146,7 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
 
   test("inserts lost-traces placeholder on overflow") { implicit dut =>
     val (eventQs, memory) = setup(writeResponseDelay = 40)
-    val total = 96
+    val total = 512
 
     0 until total foreach { idx =>
       eventQs(idx % numInputs).enqueue(idx + 1)
@@ -148,10 +154,10 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
 
     waitUntil(dut.sampleLost.toBoolean)
     waitUntil(eventQs.forall(_.isEmpty))
-    waitUntil(dut.writeSlot.toInt >= 32)
+    waitUntil(dut.writeSlot.toInt >= beatsForSamples(128))
     sleepCycles(300)
 
-    val frames = readFrames(memory, 64)
+    val frames = readFrames(memory, 128)
     val lostFrames = frames.filter(_.tracesLost)
 
     assert(lostFrames.nonEmpty, s"expected at least one lost-traces frame, got ${frames.mkString("; ")}")
