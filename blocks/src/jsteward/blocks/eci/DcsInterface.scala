@@ -14,14 +14,6 @@ case class EciChannel() extends Bundle {
   val vc = EciVcSize
 }
 
-case class TracePort() extends Bundle {
-  val error = Bool()
-  val cli = Bits(40 bits)
-  val state = Bits(7 bits)
-  val action = Bits(4 bits)
-  val request = Bits(5 bits)
-}
-
 /** Interface with dcs_2_axi.sv (DCS with read and write data wrapped in AXI) */
 case class DcsInterface(axiConfig: Axi4Config) extends Bundle with IMasterSlave {
   assert(64 to 1024 contains axiConfig.dataWidth, s"DCS desc_to_axi does not support dataWidth ${axiConfig.dataWidth}")
@@ -34,15 +26,12 @@ case class DcsInterface(axiConfig: Axi4Config) extends Bundle with IMasterSlave 
   val cleanMaybeInvResp = Stream(EciChannel())
   /** response channel for unlock (UL) */
   val unlockResp = Stream(EciChannel())
-  /** trace interface */
-  val tracing = Vec(Flow(TracePort()), 2)
 
   override def asMaster(): Unit = {
     master(axi)
     slave(cleanMaybeInvReq)
     master(cleanMaybeInvResp)
     slave(unlockResp)
-    tracing.foreach(master(_))
   }
 
   override def clone: DcsInterface = DcsInterface(axiConfig)
