@@ -300,8 +300,9 @@ case class TraceBufferDMA[T <: Data](
         when(axiDma.s_axis_write_data.fire) {
           when(beatInDesc === (beatsInDesc - 1).resized) {
             val nextSlot = slot.resize(log2Up(bufferSlots + 1)) + beatsInDesc.resize(log2Up(bufferSlots + 1))
-            when(nextSlot === bufferSlots) {
-              slot := 0
+            val bufferSlotsU = U(bufferSlots, log2Up(bufferSlots + 1) bits)
+            when(nextSlot >= bufferSlotsU) {
+              slot := (nextSlot - bufferSlotsU).resized
             } otherwise {
               slot := nextSlot.resized
             }

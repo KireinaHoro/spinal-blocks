@@ -187,4 +187,39 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
     val bubbles = frames.filter(frame => frame.tracesLost && frame.lostCount == 0)
     assert(bubbles.nonEmpty, s"expected bubble samples in flushed beat: ${frames.mkString("; ")}")
   }
+
+  test("wraps and overwrites the start of the DRAM buffer") { implicit dut =>
+    val (eventQs, memory) = setup()
+    val framesPerBeat = axiDataWidth / sampleWidth
+    val wrapBeats = 2
+    val total = (bufferSlots + wrapBeats) * framesPerBeat
+
+    0 until total foreach { idx =>
+      eventQs(0).enqueue(idx + 1)
+      sleepCycles(16)
+    }
+
+    waitUntil(eventQs.forall(_.isEmpty))
+
+    val expectedAtBase = ((total - wrapBeats * framesPerBeat + 1) to total).map(_.toLong)
+    var framesAtBase = readFrames(memory, expectedAtBase.length)
+    var timeout = 2000
+    while (framesAtBase.map(_.event) != expectedAtBase && timeout > 0) {
+      sleepCycles(1)
+      timeout -= 1
+      framesAtBase = readFrames(memory, expectedAtBase.length)
+    }
+
+    assert(timeout > 0, s"buffer base was not overwritten after wrap: ${framesAtBase.mkString("; ")}")
+    assert(dut.writeSlot.toInt == wrapBeats,
+      s"write slot should point $wrapBeats beats past the base after wrap, got ${dut.writeSlot.toInt}")
+    assert(!dut.sampleLost.toBoolean)
+    assert(!dut.dmaError.toBoolean)
+
+    framesAtBase.zip(expectedAtBase).foreach { case (frame, expected) =>
+      assert(!frame.tracesLost, s"unexpected marker frame after wrap: $frame")
+      assert(frame.src == 0, s"wrapped frame came from wrong source: $frame")
+      assert(frame.event == expected, s"unexpected wrapped frame: got $frame expected event=$expected")
+    }
+  }
 }
