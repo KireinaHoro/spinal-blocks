@@ -54,7 +54,13 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
       flushIdleCycles = 64,
     ))
 
-  case class DecodedFrame(event: Long, src: Int, ts: BigInt, tracesLost: Boolean, lostCount: Long)
+  sealed trait DecodedFrame {
+    def ts: BigInt
+  }
+  case class DecodedSample(event: Long, src: Int, ts: BigInt) extends DecodedFrame
+  case class DecodedMarker(lostCount: Long, ts: BigInt) extends DecodedFrame {
+    def isBubble: Boolean = lostCount == 0
+  }
 
   def bits(value: BigInt, offset: Int, width: Int): BigInt =
     (value >> offset) & ((BigInt(1) << width) - 1)
@@ -63,14 +69,22 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
     val payloadOffset = 0
     val srcOffset = payloadOffset + payloadWidth
     val tsOffset = srcOffset + sourceWidth
+    val payload = bits(word, payloadOffset, payloadWidth)
+    val src = bits(word, srcOffset, sourceWidth).toInt
+    val ts = bits(word, tsOffset, timestampWidth)
 
-    DecodedFrame(
-      event = bits(word, payloadOffset, payloadWidth).toLong,
-      src = bits(word, srcOffset, sourceWidth).toInt,
-      ts = bits(word, tsOffset, timestampWidth),
-      tracesLost = bits(word, srcOffset, sourceWidth) == lostSourceId,
-      lostCount = bits(word, payloadOffset, lostCountWidth).toLong,
-    )
+    if (src == lostSourceId) {
+      DecodedMarker(
+        lostCount = bits(payload, 0, lostCountWidth).toLong,
+        ts = ts,
+      )
+    } else {
+      DecodedSample(
+        event = payload.toLong,
+        src = src,
+        ts = ts,
+      )
+    }
   }
 
   def setup(writeResponseDelay: Int = 0)(implicit dut: TraceBufferDMA[UInt]) = {
@@ -137,10 +151,12 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
     assert(!dut.dmaError.toBoolean)
 
     val frames = readFrames(memory, total)
-    frames.foreach { frame =>
-      assert(!frame.tracesLost, s"unexpected lost-traces frame: $frame")
-      assert(frame.ts > 0)
-      assert(expected.remove((frame.event, frame.src)), s"unexpected trace frame: $frame")
+    frames.foreach {
+      case frame@DecodedSample(event, src, ts) =>
+        assert(ts > 0)
+        assert(expected.remove((event, src)), s"unexpected trace frame: $frame")
+      case marker: DecodedMarker =>
+        fail(s"unexpected marker frame: $marker")
     }
     assert(expected.isEmpty, s"missing expected trace frames: ${expected.mkString("; ")}")
   }
@@ -159,10 +175,10 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
     sleepCycles(300)
 
     val frames = readFrames(memory, 128)
-    val lostFrames = frames.filter(_.tracesLost)
+    val markers = frames.collect { case marker: DecodedMarker => marker }
 
-    assert(lostFrames.nonEmpty, s"expected at least one lost-traces frame, got ${frames.mkString("; ")}")
-    assert(lostFrames.exists(_.lostCount > 0), s"lost-traces frames did not carry a count: ${lostFrames.mkString("; ")}")
+    assert(markers.nonEmpty, s"expected at least one marker frame, got ${frames.mkString("; ")}")
+    assert(markers.exists(_.lostCount > 0), s"marker frames did not carry a lost count: ${markers.mkString("; ")}")
     assert(!dut.dmaError.toBoolean)
   }
 
@@ -181,10 +197,13 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
 
     val frames = readFrames(memory, 4)
     expected.foreach { case (value, port) =>
-      assert(frames.exists(frame => !frame.tracesLost && frame.event == value && frame.src == port),
+      assert(frames.exists {
+        case DecodedSample(event, src, _) => event == value && src == port
+        case _: DecodedMarker => false
+      },
         s"missing flushed trace sample value=$value port=$port in ${frames.mkString("; ")}")
     }
-    val bubbles = frames.filter(frame => frame.tracesLost && frame.lostCount == 0)
+    val bubbles = frames.collect { case marker: DecodedMarker if marker.isBubble => marker }
     assert(bubbles.nonEmpty, s"expected bubble samples in flushed beat: ${frames.mkString("; ")}")
   }
 
@@ -204,7 +223,7 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
     val expectedAtBase = ((total - wrapBeats * framesPerBeat + 1) to total).map(_.toLong)
     var framesAtBase = readFrames(memory, expectedAtBase.length)
     var timeout = 2000
-    while (framesAtBase.map(_.event) != expectedAtBase && timeout > 0) {
+    while (framesAtBase.collect { case DecodedSample(event, _, _) => event } != expectedAtBase && timeout > 0) {
       sleepCycles(1)
       timeout -= 1
       framesAtBase = readFrames(memory, expectedAtBase.length)
@@ -217,9 +236,13 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
     assert(!dut.dmaError.toBoolean)
 
     framesAtBase.zip(expectedAtBase).foreach { case (frame, expected) =>
-      assert(!frame.tracesLost, s"unexpected marker frame after wrap: $frame")
-      assert(frame.src == 0, s"wrapped frame came from wrong source: $frame")
-      assert(frame.event == expected, s"unexpected wrapped frame: got $frame expected event=$expected")
+      frame match {
+        case DecodedSample(event, src, _) =>
+          assert(src == 0, s"wrapped frame came from wrong source: $frame")
+          assert(event == expected, s"unexpected wrapped frame: got $frame expected event=$expected")
+        case marker: DecodedMarker =>
+          fail(s"unexpected marker frame after wrap: $marker")
+      }
     }
   }
 }
