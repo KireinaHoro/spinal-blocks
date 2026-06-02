@@ -174,11 +174,18 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
     waitUntil(dut.writeSlot.toInt >= beatsForSamples(128))
     sleepCycles(300)
 
-    val frames = readFrames(memory, 128)
+    val writtenFrames = dut.writeSlot.toInt * (axiDataWidth / sampleWidth)
+    val frames = readFrames(memory, writtenFrames)
     val markers = frames.collect { case marker: DecodedMarker => marker }
+    val samples = frames.collect { case sample: DecodedSample => sample }
+    val lost = markers.map(_.lostCount).sum
+    val accounted = samples.length + lost
 
     assert(markers.nonEmpty, s"expected at least one marker frame, got ${frames.mkString("; ")}")
     assert(markers.exists(_.lostCount > 0), s"marker frames did not carry a lost count: ${markers.mkString("; ")}")
+    assert(samples.nonEmpty, s"overflow markers starved all buffered samples: ${frames.mkString("; ")}")
+    assert(accounted == total,
+      s"trace accounting mismatch: captured=${samples.length} lost=$lost total=$total frames=${frames.mkString("; ")}")
     assert(!dut.dmaError.toBoolean)
   }
 

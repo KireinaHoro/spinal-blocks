@@ -96,8 +96,8 @@ case class TraceBufferDMA[T <: Data](
   catPorts.valid := traceIn.map(_.valid).orR
   catPorts.payload zip traceIn foreach { case (cp, p) => cp := p }
 
-  val overflow = Bool()
-  val bufferedPorts = catPorts.toStream(overflow, burstFifoSize, burstFifoSize)
+  val (bufferedPorts, bufferedOccupancy) = catPorts.toStream.queueWithOccupancy(burstFifoSize)
+  val overflow = catPorts.valid && bufferedOccupancy >= burstFifoSize
   bufferedPorts.ready := False
   sampleLost.setWhen(overflow)
 
@@ -123,17 +123,20 @@ case class TraceBufferDMA[T <: Data](
   val frameSource = Stream(CapturedFrame())
   frameSource.valid := False
   frameSource.payload.clearAll()
+  val drainAfterLostMarker = RegInit(False)
 
   val captureFsm = new StateMachine {
     val idle: State = new State with EntryPoint {
       whenIsActive {
-        when(pendingLostCount =/= 0) {
-          goto(emitLost)
-        } otherwise {
+        when(bufferedPorts.valid && (pendingLostCount === 0 || drainAfterLostMarker)) {
           bufferedPorts.ready := True
-          when(bufferedPorts.valid) {
-            goto(emitSaved)
-          }
+          drainAfterLostMarker := False
+          goto(emitSaved)
+        } elsewhen(pendingLostCount =/= 0) {
+          goto(emitLost)
+        } elsewhen(bufferedPorts.valid) {
+          bufferedPorts.ready := True
+          goto(emitSaved)
         }
       }
     }
@@ -147,6 +150,7 @@ case class TraceBufferDMA[T <: Data](
         frameSource.ts := cycleCount.value
         when(frameSource.ready) {
           clearLostCount := True
+          drainAfterLostMarker := True
           goto(idle)
         }
       }
