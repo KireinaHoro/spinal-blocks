@@ -69,6 +69,7 @@ case class TraceBufferDMA[T <: Data](
   val sampleLost = out(RegInit(False))
   val dmaError = out(RegInit(False))
   val writeSlot = out(UInt(log2Up(bufferSlots) bits))
+  val wrapped = out(RegInit(False))
 
   val maxBeatsPerDesc = scala.math.min(axiMaxBurstLen, bufferSlots)
   val beatFifoSize = maxBeatsPerDesc * 2
@@ -303,6 +304,7 @@ case class TraceBufferDMA[T <: Data](
             val bufferSlotsU = U(bufferSlots, log2Up(bufferSlots + 1) bits)
             when(nextSlot >= bufferSlotsU) {
               slot := (nextSlot - bufferSlotsU).resized
+              wrapped := True
             } otherwise {
               slot := nextSlot.resized
             }
