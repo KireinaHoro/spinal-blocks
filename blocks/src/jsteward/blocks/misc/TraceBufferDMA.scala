@@ -64,13 +64,6 @@ case class TraceBufferDMA[T <: Data](
     val lostCount = UInt(lostCountWidth bits)
   }
 
-  val traceIn = Vec(slave(Flow(payloadType)), numInputs)
-  val axi = master(Axi4(axiConfig))
-  val sampleLost = out(RegInit(False))
-  val dmaError = out(RegInit(False))
-  val writeSlot = out(UInt(log2Up(bufferSlots) bits))
-  val wrapped = out(RegInit(False))
-
   val maxBeatsPerDesc = scala.math.min(axiMaxBurstLen, bufferSlots)
   val beatFifoSize = maxBeatsPerDesc * 2
   val maxDescBytes = maxBeatsPerDesc * busBytes
@@ -89,6 +82,17 @@ case class TraceBufferDMA[T <: Data](
     lenWidth = lenWidth,
     tagWidth = tagWidth,
   )
+
+  val traceIn = Vec(slave(Flow(payloadType)), numInputs)
+  val axi = master(Axi4(axiConfig))
+  val readEnable = in(Bool())
+  val readDesc = slave(dmaConfig.readDescBus)
+  val readData = master(Axi4Stream(dmaConfig.axisConfig))
+  val readDescStatus = master(dmaConfig.readDescStatusBus)
+  val sampleLost = out(RegInit(False))
+  val dmaError = out(RegInit(False))
+  val writeSlot = out(UInt(log2Up(bufferSlots) bits))
+  val wrapped = out(RegInit(False))
 
   val cycleCount = CounterFreeRun(timestampWidth bits)
 
@@ -243,12 +247,12 @@ case class TraceBufferDMA[T <: Data](
 
   val axiDma = new AxiDma(dmaConfig)
   axiDma.io.m_axi >> axi
-  axiDma.io.read_enable := False
+  axiDma.io.read_enable := readEnable
   axiDma.io.write_enable := True
   axiDma.io.write_abort := False
-  axiDma.s_axis_read_desc.valid := False
-  axiDma.s_axis_read_desc.payload.clearAll()
-  axiDma.m_axis_read_data.ready := False
+  axiDma.s_axis_read_desc << readDesc
+  axiDma.m_axis_read_data >> readData
+  axiDma.m_axis_read_desc_status >> readDescStatus
 
   dmaError.setWhen(axiDma.m_axis_write_desc_status.valid && axiDma.m_axis_write_desc_status.error =/= 0)
 

@@ -98,6 +98,10 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
     )
     memory.start()
 
+    dut.readEnable #= false
+    dut.readDesc.valid #= false
+    dut.readData.ready #= true
+
     val eventQs = Array.fill(dut.numInputs)(mutable.Queue[Long]())
 
     dut.traceIn.zipWithIndex.foreach { case (ip, idx) =>
