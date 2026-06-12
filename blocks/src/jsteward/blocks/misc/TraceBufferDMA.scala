@@ -86,6 +86,7 @@ case class TraceBufferDMA[T <: Data](
   val traceIn = Vec(slave(Flow(payloadType)), numInputs)
   val axi = master(Axi4(axiConfig))
   val readEnable = in(Bool())
+  val traceStop = in(Bool())
   val readDesc = slave(dmaConfig.readDescBus)
   val readData = master(Axi4Stream(dmaConfig.axisConfig))
   val readDescStatus = master(dmaConfig.readDescStatusBus)
@@ -286,7 +287,7 @@ case class TraceBufferDMA[T <: Data](
   val dmaFsm = new StateMachine {
     val issueDesc: State = new State with EntryPoint {
       whenIsActive {
-        axiDma.s_axis_write_desc.valid := descBeats =/= 0
+        axiDma.s_axis_write_desc.valid := !traceStop && descBeats =/= 0
         axiDma.s_axis_write_desc.addr := currentAddress
         axiDma.s_axis_write_desc.len := (descBeats.resize(lenWidth) << busByteShift).resized
         axiDma.s_axis_write_desc.tag.clearAll()

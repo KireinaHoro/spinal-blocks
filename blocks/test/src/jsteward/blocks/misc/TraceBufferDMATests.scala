@@ -99,6 +99,7 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
     memory.start()
 
     dut.readEnable #= false
+    dut.traceStop #= false
     dut.readDesc.valid #= false
     dut.readData.ready #= true
 
@@ -216,6 +217,30 @@ class TraceBufferDMATests extends DutSimFunSuite[TraceBufferDMA[UInt]] {
     }
     val bubbles = frames.collect { case marker: DecodedMarker if marker.isBubble => marker }
     assert(bubbles.nonEmpty, s"expected bubble samples in flushed beat: ${frames.mkString("; ")}")
+  }
+
+  test("trace stop prevents new DDR writes") { implicit dut =>
+    val (eventQs, _) = setup()
+
+    0 until 32 foreach { idx =>
+      eventQs(idx % numInputs).enqueue(idx + 1)
+    }
+
+    waitUntil(eventQs.forall(_.isEmpty))
+    waitUntil(dut.writeSlot.toInt >= 1)
+    dut.traceStop #= true
+    sleepCycles(200)
+    val stoppedSlot = dut.writeSlot.toInt
+
+    0 until 128 foreach { idx =>
+      eventQs(idx % numInputs).enqueue(idx + 1000)
+    }
+
+    waitUntil(eventQs.forall(_.isEmpty))
+    sleepCycles(500)
+    assert(dut.writeSlot.toInt == stoppedSlot,
+      s"write slot advanced while trace was stopped: stopped=$stoppedSlot now=${dut.writeSlot.toInt}")
+    assert(!dut.dmaError.toBoolean)
   }
 
   test("wraps and overwrites the start of the DRAM buffer") { implicit dut =>
